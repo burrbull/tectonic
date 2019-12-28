@@ -318,7 +318,8 @@ unsafe fn p_itoa(mut value: i32, buf: *mut i8) -> u32 {
 /* NOTE: Acrobat 5 and prior uses 16.16 fixed point representation for
  * real numbers.
  */
-fn p_dtoa(mut value: f64, prec: i32, buf: &mut [u8]) -> usize {
+pub fn p_dtoa(mut value: f64, prec: i32, buf: &mut [u8]) -> usize {
+    let prec = prec as usize;
     let p: [i32; 10] = [
         1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000,
     ];
@@ -331,8 +332,8 @@ fn p_dtoa(mut value: f64, prec: i32, buf: &mut [u8]) -> usize {
     };
     let f = value.fract();
     let mut i = value.trunc();
-    let mut g = (f * p[prec as usize] as f64 + 0.5) as i32;
-    if g == p[prec as usize] {
+    let mut g = (f * p[prec] as f64 + 0.5) as i32;
+    if g == p[prec] {
         g = 0;
         i += 1.
     }
@@ -342,22 +343,21 @@ fn p_dtoa(mut value: f64, prec: i32, buf: &mut [u8]) -> usize {
         buf[n..n + m].copy_from_slice(&fv.as_bytes());
         n += m
     } else if g == 0i32 {
-        buf[0] = b'0';
-        n = 1;
+        buf[0..2].copy_from_slice(&[b'0', 0]);
+        return 1;
     }
     if g != 0 {
-        let mut j: i32 = prec;
         buf[n] = b'.';
+        let mut j = prec;
         loop {
-            let fresh4 = j;
-            j = j - 1;
-            if !(fresh4 != 0) {
+            if j == 0 {
                 break;
             }
-            buf[n + 1 + j as usize] = (g % 10) as u8 + b'0';
-            g /= 10
+            buf[n + j] = (g % 10) as u8 + b'0';
+            g /= 10;
+            j -= 1;
         }
-        n += 1 + prec as usize;
+        n += prec + 1;
         while buf[n - 1] == b'0' {
             n -= 1
         }
