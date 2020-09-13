@@ -26,6 +26,9 @@
     non_upper_case_globals
 )]
 
+
+use std::collections::hash_map::{HashMap, Entry};
+
 use crate::mfree;
 use crate::warn;
 use std::cmp::Ordering;
@@ -34,15 +37,13 @@ use std::ptr;
 use std::slice;
 
 use super::dpx_dpxutil::{
-    ht_append_table, ht_clear_iter, ht_clear_table, ht_init_table, ht_iter_getkey, ht_iter_getval,
+    ht_clear_iter, ht_clear_table, ht_iter_getkey, ht_iter_getval,
     ht_iter_next, ht_lookup_table, ht_set_iter,
 };
-use super::dpx_mem::new;
 use crate::dpx_pdfobj::{
     pdf_dict, pdf_link_obj, pdf_new_null, pdf_new_undefined, pdf_obj, pdf_ref_obj, pdf_release_obj,
     pdf_string, pdf_string_value, pdf_transfer_label, IntoObj, PdfObjType, PdfObjVariant, PushObj,
 };
-use libc::free;
 
 use crate::bridge::size_t;
 pub(crate) type __compar_fn_t =
@@ -51,8 +52,7 @@ pub(crate) type __compar_fn_t =
 use super::dpx_dpxutil::ht_iter;
 use super::dpx_dpxutil::ht_table;
 /* Hash */
-#[derive(Copy, Clone)]
-#[repr(C)]
+#[derive(Clone)]
 pub(crate) struct obj_data {
     pub(crate) object: *mut pdf_obj,
     pub(crate) closed: i32,
@@ -74,10 +74,9 @@ impl Default for named_object {
     }
 }
 
-unsafe fn printable_key(key: *const i8, keylen: i32) -> String {
-    let bytes = slice::from_raw_parts(key as *const u8, keylen as usize);
-    let mut printable = String::with_capacity(bytes.len() * 2);
-    for &b in bytes.iter() {
+unsafe fn printable_key(key: &[u8]) -> String {
+    let mut printable = String::with_capacity(key.len() * 2);
+    for &b in key.iter() {
         if b.is_ascii_graphic() {
             write!(&mut printable, "{}", b as char).expect("Failed to write String");
         } else {
@@ -86,24 +85,18 @@ unsafe fn printable_key(key: *const i8, keylen: i32) -> String {
     }
     printable
 }
-#[inline]
-unsafe fn hval_free(hval: *mut libc::c_void) {
-    let value = hval as *mut obj_data;
-    if !(*value).object.is_null() {
-        pdf_release_obj((*value).object);
-        (*value).object = ptr::null_mut()
+
+impl Drop for obj_data {
+    fn drop(&mut self) {
+        if !self.object.is_null() {
+            pdf_release_obj(self.object);
+            self.object = ptr::null_mut()
+        }
     }
-    free(value as *mut libc::c_void);
 }
 
-pub(crate) unsafe fn pdf_new_name_tree() -> *mut ht_table {
-    let names =
-        new((1_u64).wrapping_mul(::std::mem::size_of::<ht_table>() as u64) as u32) as *mut ht_table;
-    ht_init_table(
-        names,
-        Some(hval_free as unsafe fn(_: *mut libc::c_void) -> ()),
-    );
-    names
+pub(crate) unsafe fn pdf_new_name_tree() -> HashMap<Vec<u8>, Box<named_object>> {
+    HashMap::new()
 }
 unsafe fn check_objects_defined(ht_tab: *mut ht_table) {
     let mut iter: ht_iter = ht_iter {
@@ -118,13 +111,13 @@ unsafe fn check_objects_defined(ht_tab: *mut ht_table) {
             let value = ht_iter_getval(&mut iter) as *mut obj_data;
             assert!(!(*value).object.is_null());
             if !(*value).object.is_null() && (&*(*value).object).typ() == PdfObjType::UNDEFINED {
-                pdf_names_add_object(ht_tab, key as *const libc::c_void, keylen, pdf_new_null());
+                pdf_names_add_object(ht_tab, key, pdf_new_null());
                 warn!(
                     "Object @{} used, but not defined. Replaced by null.",
-                    printable_key(key, keylen),
+                    printable_key(key),
                 );
             }
-            if !(ht_iter_next(&mut iter) >= 0i32) {
+            if !(ht_iter_next(&mut iter) >= 0) {
                 break;
             }
         }
@@ -140,54 +133,51 @@ pub(crate) unsafe fn pdf_delete_name_tree(names: *mut *mut ht_table) {
 }
 
 pub(crate) unsafe fn pdf_names_add_object(
-    names: *mut ht_table,
-    key: *const libc::c_void,
-    keylen: i32,
+    names: &mut HashMap<Vec<u8>, Box<obj_data>>,
+    key: &[u8],
     object: *mut pdf_obj,
 ) -> i32 {
-    assert!(!names.is_null() && !object.is_null());
-    if key.is_null() || keylen < 1i32 {
+    assert!(!object.is_null());
+    if key.is_empty() {
         warn!("Null string used for name tree key.");
-        return -1i32;
+        return -1;
     }
-    let mut value = ht_lookup_table(names, key, keylen) as *mut obj_data;
-    if value.is_null() {
-        value = new((1_u64).wrapping_mul(::std::mem::size_of::<obj_data>() as u64) as u32)
-            as *mut obj_data;
-        (*value).object = object;
-        (*value).closed = 0i32;
-        ht_append_table(names, key, keylen, value as *mut libc::c_void);
-    } else {
-        assert!(!(*value).object.is_null());
-        if !(*value).object.is_null() && (&*(*value).object).typ() == PdfObjType::UNDEFINED {
-            pdf_transfer_label(object, (*value).object);
-            pdf_release_obj((*value).object);
-            (*value).object = object
-        } else {
-            warn!(
-                "Object @{} already defined.",
-                printable_key(key as *const i8, keylen),
-            );
-            pdf_release_obj(object);
-            return -1i32;
+    match names.entry(key) {
+        Entry::Vacant(value) => {
+            value.insert(Box::new(obj_data {
+                object,
+                closed: 0,
+            }))
+        }
+        Entry::Occupied(value) => {
+            let value = value.get_mut();
+            assert!(!value.object.is_null());
+            if !value.object.is_null() && (&*value.object).typ() == PdfObjType::UNDEFINED {
+                pdf_transfer_label(object, value.object);
+                pdf_release_obj(value.object);
+                value.object = object
+            } else {
+                warn!(
+                    "Object @{} already defined.",
+                    printable_key(key),
+                );
+                pdf_release_obj(object);
+                return -1i32;
+            }
         }
     }
-    0i32
 }
 /*
  * The following routine returns copies, not the original object.
  */
 
 pub(crate) unsafe fn pdf_names_lookup_reference(
-    names: *mut ht_table,
-    key: *const libc::c_void,
-    keylen: i32,
+    names: &mut HashMap<Vec<u8>, Box<obj_data>>,
+    key: &[u8],
 ) -> *mut pdf_obj {
     let object;
-    assert!(!names.is_null());
-    let value = ht_lookup_table(names, key, keylen) as *mut obj_data;
-    if !value.is_null() {
-        object = (*value).object;
+    if let Some(value) = names.get(key) {
+        object = value.object;
         assert!(!object.is_null());
     } else {
         /* A null object as dummy would create problems because as value
@@ -195,53 +185,51 @@ pub(crate) unsafe fn pdf_names_lookup_reference(
          * at all. This matters for optimization of PDF destinations.
          */
         object = pdf_new_undefined();
-        pdf_names_add_object(names, key, keylen, object);
+        pdf_names_add_object(names, key, object);
     }
     pdf_ref_obj(object)
 }
 
 pub(crate) unsafe fn pdf_names_lookup_object(
-    names: *mut ht_table,
-    key: *const libc::c_void,
-    keylen: i32,
+    names: &HashMap<Vec<u8>, Box<obj_data>>,
+    key: &[u8],
 ) -> *mut pdf_obj {
-    assert!(!names.is_null());
-    let value = ht_lookup_table(names, key, keylen) as *mut obj_data;
-    if value.is_null()
-        || !(*value).object.is_null() && (&*(*value).object).typ() == PdfObjType::UNDEFINED
-    {
-        return ptr::null_mut();
+    match names.get(key) {
+        None => ptr::null_mut(),
+        Some(value) if (!value.object.is_null() && (&*(*value).object).typ() == PdfObjType::UNDEFINED) => ptr::null_mut(),
+        Some(value) => {
+            assert!(!value.object.is_null());
+            (*value).object
+        }
     }
-    assert!(!(*value).object.is_null());
-    (*value).object
 }
 
 pub(crate) unsafe fn pdf_names_close_object(
-    names: *mut ht_table,
-    key: *const libc::c_void,
-    keylen: i32,
+    names: &mut HashMap<Vec<u8>, Box<obj_data>>,
+    key: &[u8],
 ) -> i32 {
-    assert!(!names.is_null());
-    let value = ht_lookup_table(names, key, keylen) as *mut obj_data;
-    if value.is_null()
-        || !(*value).object.is_null() && (&*(*value).object).typ() == PdfObjType::UNDEFINED
-    {
-        warn!(
-            "Cannot close undefined object @{}.",
-            printable_key(key as *const i8, keylen),
-        );
-        return -1i32;
+    
+    match names.get_mut(key) {
+        Some(value) if value.object.is_null() => panic!(),
+        Some(value)if (&*value.object).typ() != PdfObjType::UNDEFINED => {
+            if value.closed != 0 {
+                warn!(
+                    "Object @{} already closed.",
+                    printable_key(key),
+                );
+                return -1;
+            }
+            value.closed = 1;
+            0
+        }
+        _ => {
+            warn!(
+                "Cannot close undefined object @{}.",
+                printable_key(key),
+            );
+            return -1;
+        }
     }
-    assert!(!(*value).object.is_null());
-    if (*value).closed != 0 {
-        warn!(
-            "Object @{} already closed.",
-            printable_key(key as *const i8, keylen),
-        );
-        return -1i32;
-    }
-    (*value).closed = 1i32;
-    0i32
 }
 #[inline]
 fn cmp_key(sd1: &named_object, sd2: &named_object) -> Ordering {

@@ -60,8 +60,9 @@ use super::dpx_pdfdoc::{
 };
 use super::dpx_pdfdraw::pdf_dev_transform;
 use super::dpx_pdfnames::{
-    pdf_delete_name_tree, pdf_names_add_object, pdf_names_close_object, pdf_names_lookup_object,
-    pdf_names_lookup_reference, pdf_new_name_tree,
+    obj_data,
+    pdf_names_add_object, pdf_names_close_object, pdf_names_lookup_object,
+    pdf_names_lookup_reference,
 };
 use super::dpx_pdfparse::{dump, SkipWhite};
 use super::specials::dvips::{
@@ -89,8 +90,6 @@ pub(crate) struct SpcHandler {
     pub(crate) key: &'static str,
     pub(crate) exec: Option<unsafe fn(_: &mut SpcEnv, _: &mut SpcArg) -> i32>,
 }
-
-use super::dpx_dpxutil::ht_table;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -129,7 +128,11 @@ pub(crate) unsafe fn spc_suspend_annot(mut _spe: &mut SpcEnv) -> i32 {
     dvi_link_annot(0i32);
     0i32
 }
-static mut NAMED_OBJECTS: *mut ht_table = ptr::null_mut();
+
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
+pub(crate) static mut NAMED_OBJECTS: Lazy<HashMap<Vec<u8>, Box<obj_data>>> =
+    Lazy::new(|| HashMap::new());
 
 /* pageN where N is a positive integer.
  * Note that page need not exist at this time.
@@ -150,7 +153,6 @@ unsafe fn ispageref(key: &str) -> bool {
 }
 
 pub(crate) unsafe fn spc_lookup_reference(key: &str) -> Option<*mut pdf_obj> {
-    assert!(!NAMED_OBJECTS.is_null());
     let value = match key {
         "xpos" => {
             /* xpos and ypos must be position in device space here. */
@@ -193,7 +195,6 @@ pub(crate) unsafe fn spc_lookup_reference(key: &str) -> Option<*mut pdf_obj> {
     }
 }
 pub(crate) unsafe fn spc_lookup_object(key: &str) -> *mut pdf_obj {
-    assert!(!NAMED_OBJECTS.is_null());
     if key.is_empty() {
         return ptr::null_mut();
     }
@@ -231,27 +232,23 @@ pub(crate) unsafe fn spc_lookup_object(key: &str) -> *mut pdf_obj {
     return value; /* _FIXME_ */
 }
 pub(crate) unsafe fn spc_push_object(key: &str, value: *mut pdf_obj) {
-    assert!(!NAMED_OBJECTS.is_null());
     if key.is_empty() || value.is_null() {
         return;
     }
     pdf_names_add_object(
         NAMED_OBJECTS,
-        key.as_ptr() as *const libc::c_void,
-        key.len() as i32,
+        key,
         value,
     );
 }
 pub(crate) unsafe fn spc_flush_object(key: &str) {
     pdf_names_close_object(
         NAMED_OBJECTS,
-        key.as_ptr() as *const libc::c_void,
-        key.len() as i32,
+        key,
     );
 }
 pub(crate) unsafe fn spc_clear_objects() {
-    pdf_delete_name_tree(&mut NAMED_OBJECTS);
-    NAMED_OBJECTS = pdf_new_name_tree();
+    NAMED_OBJECTS.clear();
 }
 unsafe fn spc_handler_unknown(_spe: &mut SpcEnv, args: &mut SpcArg) -> i32 {
     args.cur = &[];
@@ -384,8 +381,7 @@ pub(crate) unsafe fn spc_exec_at_end_page() -> i32 {
 }
 pub(crate) unsafe fn spc_exec_at_begin_document() -> i32 {
     let mut error: i32 = 0i32;
-    assert!(NAMED_OBJECTS.is_null());
-    NAMED_OBJECTS = pdf_new_name_tree();
+    NAMED_OBJECTS.clear();
     for spc in &KNOWN_SPECIALS {
         if let Some(bodhk) = spc.bodhk_func {
             error = bodhk();
@@ -401,9 +397,7 @@ pub(crate) unsafe fn spc_exec_at_end_document() -> i32 {
             error = eodhk();
         }
     }
-    if !NAMED_OBJECTS.is_null() {
-        pdf_delete_name_tree(&mut NAMED_OBJECTS);
-    }
+    NAMED_OBJECTS.clear();
     error
 }
 unsafe fn print_error(name: *const i8, spe: &mut SpcEnv, ap: &mut SpcArg) {

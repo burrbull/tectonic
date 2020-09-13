@@ -1494,9 +1494,7 @@ pub(crate) unsafe fn pdf_doc_add_names(
     if (*p.names.offset(i as isize)).data.is_null() {
         (*p.names.offset(i as isize)).data = pdf_new_name_tree()
     }
-    let keyptr = key.as_ptr() as *const libc::c_void;
-    let keylen = key.len() as i32;
-    pdf_names_add_object((*p.names.offset(i as isize)).data, keyptr, keylen, value)
+    pdf_names_add_object(&mut *(*p.names.offset(i as isize)).data, key, value)
 }
 unsafe fn pdf_doc_add_goto(annot_dict: *mut pdf_obj) {
     let mut A: *mut pdf_obj = ptr::null_mut();
