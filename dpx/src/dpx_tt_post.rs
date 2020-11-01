@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -78,22 +78,7 @@ unsafe fn read_v2_post_names<R: Read>(mut post: *mut tt_post_table, handle: &mut
             if idx as i32 > maxidx as i32 {
                 maxidx = idx
             }
-            if idx as i32 > 32767i32 {
-                /* Although this is strictly speaking out of spec, it seems to work
-                and there are real-life fonts that use it.
-                We show a warning only once, instead of thousands of times */
-                static mut warning_issued: i8 = 0_i8;
-                if warning_issued == 0 {
-                    warn!("TrueType post table name index {} > 32767", idx);
-                    warning_issued = 1_i8
-                }
-                /* In a real-life large font, (x)dvipdfmx crashes if we use
-                nonvanishing idx in the case of idx > 32767.
-                If we set idx = 0, (x)dvipdfmx works fine for the font and
-                created pdf seems fine. The post table may not be important
-                in such a case */
-                idx = 0_u16
-            }
+            // Tectonic: #if 0 stanza removed
         }
         *indices.offset(i as isize) = idx;
     }
@@ -188,7 +173,7 @@ pub(crate) unsafe fn tt_read_post_table(sfont: &sfnt) -> *mut tt_post_table {
 
 pub(crate) unsafe fn tt_lookup_post_table(post: *mut tt_post_table, glyphname: &str) -> u16 {
     assert!(!post.is_null() && !glyphname.is_empty());
-    for gid in 0..(*post).count as u16 {
+    for gid in 0..(*post).numberOfGlyphs as u16 {
         if !(*(*post).glyphNamePtr.offset(gid as isize)).is_null()
             && glyphname.as_bytes()
                 == CStr::from_ptr(*(*post).glyphNamePtr.offset(gid as isize)).to_bytes()
@@ -200,7 +185,7 @@ pub(crate) unsafe fn tt_lookup_post_table(post: *mut tt_post_table, glyphname: &
 }
 
 pub(crate) unsafe fn tt_get_glyphname(post: *mut tt_post_table, gid: u16) -> String {
-    if (gid as i32) < (*post).count as i32
+    if (gid as i32) < (*post).numberOfGlyphs as i32
         && !(*(*post).glyphNamePtr.offset(gid as isize)).is_null()
     {
         return CStr::from_ptr(*(*post).glyphNamePtr.offset(gid as isize))

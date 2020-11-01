@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -25,6 +25,8 @@
     non_snake_case,
     non_upper_case_globals
 )]
+
+use crate::dpx_dpxconf::dpx_conf;
 
 use super::dpx_numbers::{get_positive_quad, get_unsigned_num, GetFromFile};
 use crate::bridge::DisplayExt;
@@ -216,7 +218,7 @@ pub(crate) unsafe fn vf_locate_font(tex_name: &str, ptsize: spt_t) -> i32 {
     if let Some(vf_handle) = InFile::open(tex_name, TTInputFormat::VF, 0i32)
         .or_else(|| InFile::open(tex_name, TTInputFormat::OVF, 0i32))
     {
-        if verbose as i32 == 1i32 {
+        if dpx_conf.verbose_level > 0 {
             eprint!("(VF:{}", tex_name);
         }
         let thisfont = vf_fonts.len();
@@ -230,7 +232,7 @@ pub(crate) unsafe fn vf_locate_font(tex_name: &str, ptsize: spt_t) -> i32 {
         });
         read_header(&mut &vf_handle, thisfont as i32);
         process_vf_file(&mut &vf_handle, thisfont as i32);
-        if verbose != 0 {
+        if dpx_conf.verbose_level > 0 {
             eprint!(")");
         }
         thisfont as i32
@@ -341,7 +343,7 @@ unsafe fn vf_xxx(len: usize, slice: &mut &[u8]) {
          * Warning message from virtual font.
          */
         if buffer[i..].starts_with(b"Warning:") {
-            if verbose != 0 {
+            if dpx_conf.verbose_level > 0 {
                 warn!("VF:{}", buffer[i + 8..].display());
             }
         } else {

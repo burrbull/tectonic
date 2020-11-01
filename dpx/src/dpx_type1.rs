@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -26,6 +26,7 @@
     non_upper_case_globals
 )]
 
+use crate::dpx_dpxconf::dpx_conf;
 use crate::mfree;
 use crate::{info, warn};
 use std::ptr;
@@ -515,7 +516,6 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
     if !pdf_font_is_in_use(font) {
         return 0i32;
     }
-    let verbose = pdf_font_get_verbose();
     let encoding_id = pdf_font_get_encoding(font);
     pdf_font_get_descriptor(font);
     let usedchars = pdf_font_get_usedchars(font);
@@ -592,7 +592,7 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
         panic!("Type 1 font with no \".notdef\" glyph???");
     }
     *GIDMap.offset(0) = gid as u16;
-    if verbose > 2i32 {
+    if dpx_conf.verbose_level > 2 {
         info!("[glyphs:/.notdef");
     }
     let mut num_glyphs = 1i32 as u16;
@@ -664,7 +664,7 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
                         }
                         prev = code;
                         num_glyphs = num_glyphs.wrapping_add(1);
-                        if verbose > 2 {
+                        if dpx_conf.verbose_level > 2 {
                             info!("/{}", glyph);
                         }
                         /* CharSet is actually string object. */
@@ -763,7 +763,7 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
                     i += 1
                 }
                 if i == num_glyphs as i32 {
-                    if verbose > 2i32 {
+                    if dpx_conf.verbose_level > 2 {
                         info!("/{}", achar_name);
                     }
                     *GIDMap.offset(num_glyphs as isize) = achar_gid as u16;
@@ -773,7 +773,12 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
                         .glyphs
                         .offset((*charset).num_entries as isize) =
                         cff_get_seac_sid(&cffont, achar_name) as s_SID;
-                    (*charset).num_entries = ((*charset).num_entries as i32 + 1i32) as u16
+                    (*charset).num_entries += 1;
+                    /* CharSet is actually string object. */
+                    {
+                        pdfcharset.add_str("/");
+                        pdfcharset.add_str(achar_name);
+                    }
                 }
                 let mut i = 0;
                 while i < num_glyphs as i32 {
@@ -783,7 +788,7 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
                     i += 1;
                 }
                 if i == num_glyphs as i32 {
-                    if verbose > 2 {
+                    if dpx_conf.verbose_level > 2 {
                         info!("/{}", bchar_name);
                     }
                     *GIDMap.offset(num_glyphs as isize) = bchar_gid as u16;
@@ -793,7 +798,12 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
                         .glyphs
                         .offset((*charset).num_entries as isize) =
                         cff_get_seac_sid(&cffont, bchar_name) as s_SID;
-                    (*charset).num_entries = ((*charset).num_entries as i32 + 1i32) as u16
+                    (*charset).num_entries += 1;
+                    /* CharSet is actually string object. */
+                    {
+                        pdfcharset.add_str("/");
+                        pdfcharset.add_str(achar_name);
+                    }
                 }
             }
         }
@@ -808,7 +818,7 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
     cffont.cstrings = cstring;
     cff_release_charsets(cffont.charsets);
     cffont.charsets = charset;
-    if verbose > 2i32 {
+    if dpx_conf.verbose_level > 2 {
         info!("]");
     }
     /* Now we can update the String Index */
@@ -817,11 +827,10 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
     cff_update_string(&mut cffont);
     add_metrics(font, &cffont, enc_slice, widths, num_glyphs as i32);
     offset = write_fontfile(font, &mut cffont, &pdfcharset);
-    if verbose > 1i32 {
+    if dpx_conf.verbose_level > 1 {
         info!("[{} glyphs][{} bytes]", num_glyphs, offset);
     }
     free(widths as *mut libc::c_void);
     free(GIDMap as *mut libc::c_void);
-    /* Maybe writing Charset is recommended for subsetted font. */
-    0i32
+    0
 }

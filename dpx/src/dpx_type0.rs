@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -26,6 +26,7 @@
     non_upper_case_globals
 )]
 
+use crate::dpx_dpxconf::dpx_conf;
 use std::ptr;
 
 use super::dpx_cid::{
@@ -62,11 +63,6 @@ pub(crate) struct Type0Font {
 }
 use super::dpx_fontmap::fontmap_opt;
 
-static mut __verbose: i32 = 0i32;
-
-pub(crate) unsafe fn Type0Font_set_verbose(level: i32) {
-    __verbose = level;
-}
 unsafe fn new_used_chars2() -> *mut i8 {
     let used_chars = new((8192usize).wrapping_mul(::std::mem::size_of::<i8>()) as _) as *mut i8;
     memset(used_chars as *mut libc::c_void, 0i32, 8192);
@@ -110,18 +106,11 @@ unsafe fn Type0Font_clean(font: &mut Type0Font) {
     font.fontname.clear();
 }
 /* PLEASE FIX THIS */
-unsafe fn Type0Font_create_ToUnicode_stream(font: &Type0Font) -> *mut pdf_obj {
-    let cidfont: *mut CIDFont = font.descendant;
-    let used_chars = std::slice::from_raw_parts(Type0Font_get_usedchars(font) as *const u8, 8192);
-    otf_create_ToUnicode_stream(
-        &*(&*cidfont).ident,
-        CIDFont_get_opt_index(cidfont),
-        used_chars,
-        font.cmap_id,
-    )
-}
+
 /* Try to load ToUnicode CMap from file system first, if not found fallback to
- * font CMap reverse lookup. */
+ * font CMap reverse lookup.
+ * CHANGED: CMap here is not always Unicode to CID mapping. Don't use reverse lookup.
+ */
 unsafe fn Type0Font_try_load_ToUnicode_stream(
     font: *mut Type0Font,
     cmap_base: &str,
@@ -133,11 +122,19 @@ unsafe fn Type0Font_try_load_ToUnicode_stream(
         tounicode = pdf_read_ToUnicode_file(&cmap_name)
     }
     if tounicode.is_null() {
-        tounicode = Type0Font_create_ToUnicode_stream(&*font)
+        let cidfont: *mut CIDFont = font.descendant;
+        let used_chars =
+            std::slice::from_raw_parts(Type0Font_get_usedchars(font) as *const u8, 8192);
+        tounicode = otf_create_ToUnicode_stream(
+            &*(&*cidfont).ident,
+            CIDFont_get_opt_index(cidfont),
+            used_chars,
+            (*font).cmap_id,
+        );
     }
     tounicode
 }
-unsafe fn add_ToUnicode(font: *mut Type0Font) {
+unsafe fn Type0Font_attach_ToUnicode_stream(font: *mut Type0Font) {
     /*
      * ToUnicode CMap:
      *
@@ -174,21 +171,37 @@ unsafe fn add_ToUnicode(font: *mut Type0Font) {
     let mut fontname = &*(&*cidfont).fontname;
     if CIDFont_get_embedding(cidfont) != 0 {
         fontname = &fontname[7..]
-        /* FIXME */
+        /* FIXME: Skip pseudo unique tag... */
     }
     if (*csi).registry == "Adobe" && (*csi).ordering == "Identity" {
         match CIDFont_get_subtype(cidfont) {
-            2 => {
+            CIDFONT_TYPE2 => {
                 /* PLEASE FIX THIS */
-                tounicode = Type0Font_create_ToUnicode_stream(&*font)
+                let used_chars =
+                    std::slice::from_raw_parts(Type0Font_get_usedchars(font) as *const u8, 8192);
+                tounicode = otf_create_ToUnicode_stream(
+                    &*(&*cidfont).ident,
+                    CIDFont_get_opt_index(cidfont),
+                    used_chars,
+                    (*font).cmap_id,
+                );
             }
             _ => {
-                if CIDFont_get_flag(cidfont, 1i32 << 9i32) != 0 {
-                    /* FIXME */
-                    tounicode = Type0Font_create_ToUnicode_stream(&*font)
-                } else if CIDFont_get_flag(cidfont, 1i32 << 8i32) != 0 {
-                    /* FIXME */
-                    /* Font loader will create ToUnicode and set. */
+                if CIDFont_get_flag(cidfont, CIDFONT_FLAG_TYPE1C) != 0 {
+                    let used_chars = std::slice::from_raw_parts(
+                        Type0Font_get_usedchars(font) as *const u8,
+                        8192,
+                    );
+                    tounicode = otf_create_ToUnicode_stream(
+                        &*(&*cidfont).ident,
+                        CIDFont_get_opt_index(cidfont),
+                        used_chars,
+                        (*font).cmap_id,
+                    );
+                } else if CIDFont_get_flag(cidfont, CIDFONT_FLAG_TYPE1C) != 0 {
+                    /* FIXME: handled on very different timing.
+                     * Font loader will create ToUnicode and set.
+                     */
                     return;
                 } else {
                     tounicode = Type0Font_try_load_ToUnicode_stream(font, fontname)
@@ -215,9 +228,9 @@ unsafe fn Type0Font_dofont(font: &mut Type0Font) {
     if font.indirect.is_null() {
         return;
     }
+    /* FIXME: Should move to pdffont.c */
     if !(*font.fontdict).as_dict().has("ToUnicode") {
-        /* FIXME */
-        add_ToUnicode(font);
+        Type0Font_attach_ToUnicode_stream(font);
     };
 }
 unsafe fn Type0Font_flush(font: &mut Type0Font) {
@@ -275,8 +288,7 @@ pub(crate) unsafe fn Type0Font_cache_find(
     cmap_id: i32,
     fmap_opt: &mut fontmap_opt,
 ) -> i32 {
-    let pdf_ver = pdf_get_version() as i32;
-    if map_name.is_empty() || cmap_id < 0i32 || pdf_ver < 2i32 {
+    if map_name.is_empty() || cmap_id < 0i32 || pdf_check_version(1, 2) < 0 {
         return -1i32;
     }
     /*
@@ -352,7 +364,7 @@ pub(crate) unsafe fn Type0Font_cache_find(
      *  appended by -ENCODING.
      */
     let fontname = &*(&*cidfont).fontname; /* skip XXXXXX+ */
-    if __verbose != 0 {
+    if dpx_conf.verbose_level > 0 {
         if CIDFont_get_embedding(cidfont) != 0 && fontname.len() > 7 {
             info!("(CID:{})", &fontname[7..]);
         } else {

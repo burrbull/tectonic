@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2007-2016 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2007-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -27,6 +27,7 @@
 )]
 
 use super::dpx_sfnt::{sfnt_find_table_pos, sfnt_open, sfnt_read_table_directory};
+use crate::dpx_dpxconf::dpx_conf;
 use crate::{info, warn};
 use std::ffi::CStr;
 use std::ptr;
@@ -266,7 +267,6 @@ pub(crate) unsafe fn pdf_font_load_type1c(font: &mut pdf_font) -> i32 {
     let mut offset: i32 = 0i32;
     let mut ginfo = cs_ginfo::new();
     let mut widths: [f64; 256] = [0.; 256];
-    let verbose = pdf_font_get_verbose();
     if !pdf_font_is_in_use(font) {
         return 0i32;
     }
@@ -433,7 +433,7 @@ pub(crate) unsafe fn pdf_font_load_type1c(font: &mut pdf_font) -> i32 {
     /* First we add .notdef glyph.
      * All Type 1 font requires .notdef glyph to be present.
      */
-    if verbose > 2i32 {
+    if dpx_conf.verbose_level > 2 {
         info!("[glyphs:/.notdef");
     }
     let mut size = (*(*cs_idx).offset.offset(1)).wrapping_sub(*(*cs_idx).offset.offset(0)) as i32;
@@ -517,7 +517,7 @@ pub(crate) unsafe fn pdf_font_load_type1c(font: &mut pdf_font) -> i32 {
                 } else {
                     pdfcharset.add_str("/");
                     pdfcharset.add_slice(enc_slice[code as usize].as_bytes());
-                    if verbose > 2i32 {
+                    if dpx_conf.verbose_level > 2 {
                         info!("/{}", enc_slice[code as usize]);
                     }
                     size = (*(*cs_idx).offset.offset((gid_0 as i32 + 1i32) as isize))
@@ -567,7 +567,7 @@ pub(crate) unsafe fn pdf_font_load_type1c(font: &mut pdf_font) -> i32 {
         }
         /* Prevent duplication. */
     }
-    if verbose > 2i32 {
+    if dpx_conf.verbose_level > 2 {
         info!("]");
     }
     free(data as *mut libc::c_void);
@@ -747,7 +747,7 @@ pub(crate) unsafe fn pdf_font_load_type1c(font: &mut pdf_font) -> i32 {
     /* Handle Widths in fontdict. */
     add_SimpleMetrics(font, &cffont, widths.as_mut_ptr(), num_glyphs);
     /* Close font */
-    if verbose > 1i32 {
+    if dpx_conf.verbose_level > 1 {
         info!("[{}/{} glyphs][{} bytes]", num_glyphs, cs_count, offset);
     }
     let descriptor = (*pdf_font_get_descriptor(font)).as_dict_mut();

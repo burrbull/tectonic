@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -46,7 +46,7 @@ pub(crate) unsafe fn UC_UTF16BE_is_valid_string(mut p: *const u8, endptr: *const
 }
 
 pub(crate) unsafe fn UC_UTF8_is_valid_string(mut p: *const u8, endptr: *const u8) -> bool {
-    if p.offset(1) >= endptr {
+    if p >= endptr {
         return false;
     }
     while p < endptr {
@@ -91,14 +91,14 @@ pub(crate) unsafe fn UC_UTF16BE_encode_char(
 ) -> size_t {
     let p: *mut u8 = *pp;
     let count = if ucv >= 0i32 && ucv <= 0xffffi32 {
-        if p.offset(2) >= endptr {
+        if p.offset(2) > endptr {
             return 0i32 as size_t;
         }
         *p.offset(0) = (ucv >> 8i32 & 0xffi32) as u8;
         *p.offset(1) = (ucv & 0xffi32) as u8;
         2
     } else if ucv >= 0x10000i32 && ucv <= 0x10ffffi32 {
-        if p.offset(4) >= endptr {
+        if p.offset(4) > endptr {
             return 0i32 as size_t;
         }
         ucv -= 0x10000i32;
@@ -110,7 +110,7 @@ pub(crate) unsafe fn UC_UTF16BE_encode_char(
         *p.offset(3) = (low as i32 & 0xffi32) as u8;
         4
     } else {
-        if p.offset(2) >= endptr {
+        if p.offset(2) > endptr {
             return 0i32 as size_t;
         }
         *p.offset(0) = (0xfffdi32 >> 8i32 & 0xffi32) as u8;
@@ -167,20 +167,20 @@ pub(crate) unsafe fn UC_UTF8_encode_char(ucv: i32, pp: &mut *mut u8, endptr: *mu
         return 0i32 as size_t;
     }
     let count = if ucv < 0x7fi32 {
-        if p >= endptr.offset(-1) {
+        if p.offset(1) > endptr {
             return 0i32 as size_t;
         }
         *p.offset(0) = ucv as u8;
         1
     } else if ucv <= 0x7ffi32 {
-        if p >= endptr.offset(-2) {
+        if p.offset(2) > endptr {
             return 0i32 as size_t;
         }
         *p.offset(0) = (0xc0i32 | ucv >> 6i32) as u8;
         *p.offset(1) = (0x80i32 | ucv & 0x3fi32) as u8;
         2
     } else if ucv <= 0xffffi32 {
-        if p >= endptr.offset(-3) {
+        if p.offset(3) > endptr {
             return 0i32 as size_t;
         }
         *p.offset(0) = (0xe0i32 | ucv >> 12i32) as u8;
@@ -188,7 +188,7 @@ pub(crate) unsafe fn UC_UTF8_encode_char(ucv: i32, pp: &mut *mut u8, endptr: *mu
         *p.offset(2) = (0x80i32 | ucv & 0x3fi32) as u8;
         3
     } else if ucv <= 0x1fffffi32 {
-        if p >= endptr.offset(-4) {
+        if p.offset(4) > endptr {
             return 0i32 as size_t;
         }
         *p.offset(0) = (0xf0i32 | ucv >> 18i32) as u8;
@@ -197,7 +197,7 @@ pub(crate) unsafe fn UC_UTF8_encode_char(ucv: i32, pp: &mut *mut u8, endptr: *mu
         *p.offset(3) = (0x80i32 | ucv & 0x3fi32) as u8;
         4
     } else if ucv <= 0x3ffffffi32 {
-        if p >= endptr.offset(-5) {
+        if p.offset(5) > endptr {
             return 0i32 as size_t;
         }
         *p.offset(0) = (0xf8i32 | ucv >> 24i32) as u8;
@@ -207,7 +207,7 @@ pub(crate) unsafe fn UC_UTF8_encode_char(ucv: i32, pp: &mut *mut u8, endptr: *mu
         *p.offset(4) = (0x80i32 | ucv & 0x3fi32) as u8;
         5
     } else {
-        if p >= endptr.offset(-6) {
+        if p.offset(6) > endptr {
             return 0i32 as size_t;
         }
         *p.offset(0) = (0xfci32 | ucv >> 30i32) as u8;

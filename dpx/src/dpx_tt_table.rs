@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -646,6 +646,7 @@ fn tt_get_name(
 ) -> usize {
     let mut length = 0;
     let name_offset = sfnt_locate_table(sfont, sfnt_table_info::NAME);
+    let is_utf16_be = (plat_id == 3) && (enco_id == 1) && (lang_id == 0x0409) && (name_id == 6);
     let handle = &mut &*sfont.handle;
     if u16::get(handle) != 0 {
         panic!("Expecting zero");
@@ -666,6 +667,9 @@ fn tt_get_name(
             && (lang_id as u32 == 0xffffu32 || l_id as i32 == lang_id as i32)
             && n_id as i32 == name_id as i32
         {
+            if is_utf16_be {
+                length /= 2;
+            }
             if length > dest.len() - 1 {
                 warn!(
                     "Name string too long ({}), truncating to {}",
@@ -679,8 +683,13 @@ fn tt_get_name(
                     name_offset as u64 + string_offset as u64 + offset as u64,
                 ))
                 .unwrap();
-
-            handle.read(&mut dest[..length]).unwrap();
+            if is_utf16_be {
+                for j in 0..length {
+                    dest[j] = (u16::get(handle) & 0x00FF) as u8;
+                }
+            } else {
+                handle.read(&mut dest[..length]).unwrap();
+            }
             break;
         } else {
             i += 1
