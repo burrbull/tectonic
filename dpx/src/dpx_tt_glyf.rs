@@ -21,6 +21,8 @@
 */
 #![allow(mutable_transmutes, non_camel_case_types)]
 
+use ttf_parser::Tag;
+
 use crate::warn;
 use crate::FromBEByteSlice;
 
@@ -35,7 +37,7 @@ use crate::dpx_truetype::sfnt_table_info;
 
 use std::io::{Read, Seek, SeekFrom};
 
-use super::dpx_sfnt::{sfnt, PutBE};
+use super::dpx_sfnt::{sfnt, PutBE, SfntType};
 
 #[derive(Clone)]
 pub(crate) struct tt_glyph_desc {
@@ -155,7 +157,9 @@ impl tt_glyphs {
 pub(crate) fn tt_build_tables(sfont: &mut sfnt, g: &mut tt_glyphs) -> i32 {
     /* some information available from other TrueType table */
     /* temp */
-    if sfont.type_0 != 1i32 << 0i32 && sfont.type_0 != 1i32 << 4i32 && sfont.type_0 != 1i32 << 8i32
+    if sfont.type_0 != SfntType::TrueType
+        && sfont.type_0 != SfntType::FontCollection
+        && sfont.type_0 != SfntType::DFont
     {
         panic!("Invalid font type");
     }
@@ -188,9 +192,9 @@ pub(crate) fn tt_build_tables(sfont: &mut sfnt, g: &mut tt_glyphs) -> i32 {
     g.default_advh = (os2.sTypoAscender as i32 - os2.sTypoDescender as i32) as u16;
     g.default_tsb = (g.default_advh as i32 - os2.sTypoAscender as i32) as i16;
 
-    let vmtx = if sfnt_find_table_pos(sfont, b"vmtx") > 0_u32 {
+    let vmtx = if sfnt_find_table_pos(sfont, Tag::from_bytes(b"vmtx")) > 0_u32 {
         let vhea = tt_read_vhea_table(sfont);
-        sfnt_locate_table(sfont, b"vmtx");
+        sfnt_locate_table(sfont, Tag::from_bytes(b"vmtx"));
         Some(tt_read_longMetrics(
             &mut &*sfont.handle,
             maxp.numGlyphs,
@@ -444,7 +448,9 @@ pub(crate) fn tt_build_tables(sfont: &mut sfnt, g: &mut tt_glyphs) -> i32 {
 
 pub(crate) fn tt_get_metrics(sfont: &sfnt, g: &mut tt_glyphs) -> i32 {
     /* temp */
-    if sfont.type_0 != 1i32 << 0i32 && sfont.type_0 != 1i32 << 4i32 && sfont.type_0 != 1i32 << 8i32
+    if sfont.type_0 != SfntType::TrueType
+        && sfont.type_0 != SfntType::FontCollection
+        && sfont.type_0 != SfntType::DFont
     {
         panic!("Invalid font type");
     }
@@ -473,9 +479,9 @@ pub(crate) fn tt_get_metrics(sfont: &sfnt, g: &mut tt_glyphs) -> i32 {
     let os2 = tt_read_os2__table(sfont);
     g.default_advh = (os2.sTypoAscender as i32 - os2.sTypoDescender as i32) as u16;
     g.default_tsb = (g.default_advh as i32 - os2.sTypoAscender as i32) as i16;
-    let vmtx = if sfnt_find_table_pos(sfont, b"vmtx") > 0_u32 {
+    let vmtx = if sfnt_find_table_pos(sfont, Tag::from_bytes(b"vmtx")) > 0_u32 {
         let vhea = tt_read_vhea_table(sfont);
-        sfnt_locate_table(sfont, b"vmtx");
+        sfnt_locate_table(sfont, Tag::from_bytes(b"vmtx"));
         Some(tt_read_longMetrics(
             &mut &*sfont.handle,
             maxp.numGlyphs,

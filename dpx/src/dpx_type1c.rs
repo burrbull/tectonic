@@ -26,7 +26,9 @@
     non_upper_case_globals
 )]
 
-use super::dpx_sfnt::{sfnt_find_table_pos, sfnt_open, sfnt_read_table_directory};
+use ttf_parser::Tag;
+
+use super::dpx_sfnt::{sfnt_find_table_pos, sfnt_open, sfnt_read_table_directory, SfntType};
 use crate::{info, warn};
 use std::ffi::CStr;
 use std::ptr;
@@ -131,10 +133,10 @@ pub(crate) unsafe fn pdf_font_open_type1c(font: &mut pdf_font) -> i32 {
     }
     let handle = handle.unwrap();
     let mut sfont = sfnt_open(handle);
-    if sfont.type_0 != 1 << 2 || sfnt_read_table_directory(&mut sfont, 0) < 0 {
+    if sfont.type_0 != SfntType::PostScript || sfnt_read_table_directory(&mut sfont, 0) < 0 {
         panic!("Not a CFF/OpenType font (9)?");
     }
-    let offset = sfnt_find_table_pos(&sfont, b"CFF ");
+    let offset = sfnt_find_table_pos(&sfont, Tag::from_bytes(b"CFF "));
     if offset < 1_u32 {
         panic!("No \"CFF \" table found; not a CFF/OpenType font (10)?");
     }
@@ -268,7 +270,7 @@ pub(crate) unsafe fn pdf_font_load_type1c(font: &mut pdf_font) -> i32 {
     let mut widths: [f64; 256] = [0.; 256];
     let verbose = pdf_font_get_verbose();
     if !pdf_font_is_in_use(font) {
-        return 0i32;
+        return 0;
     }
     if pdf_font_get_flag(font, 1i32 << 0i32) != 0 {
         panic!("Only embedded font supported for CFF/OpenType font.");
@@ -286,23 +288,23 @@ pub(crate) unsafe fn pdf_font_load_type1c(font: &mut pdf_font) -> i32 {
     }
     let handle = handle.unwrap();
     let mut sfont = sfnt_open(handle);
-    if sfnt_read_table_directory(&mut sfont, 0_u32) < 0i32 {
+    if sfnt_read_table_directory(&mut sfont, 0_u32) < 0 {
         panic!("Could not read OpenType table directory: {}", font.ident);
     }
-    if sfont.type_0 != 1i32 << 2i32 || {
-        offset = sfnt_find_table_pos(&sfont, b"CFF ") as i32;
-        offset == 0i32
+    if sfont.type_0 != SfntType::PostScript || {
+        offset = sfnt_find_table_pos(&sfont, Tag::from_bytes(b"CFF ")) as i32;
+        offset == 0
     } {
         panic!("Not a CFF/OpenType font (11)?");
     }
     let mut cffont = cff_open(sfont.handle.clone(), offset, 0).expect("Could not open CFF font.");
-    if cffont.flag & 1i32 << 0i32 != 0 {
+    if cffont.flag & 1i32 << 0 != 0 {
         panic!("This is CIDFont...");
     }
     let fullname = format!("{}+{}", uniqueTag, font.fontname);
     /* Offsets from DICTs */
     cff_read_charsets(&mut cffont);
-    if encoding_id < 0i32 {
+    if encoding_id < 0 {
         cff_read_encoding(&mut cffont);
     }
     cff_read_private(&mut cffont);

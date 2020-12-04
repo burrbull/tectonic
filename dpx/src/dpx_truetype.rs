@@ -28,7 +28,7 @@
 
 use super::dpx_sfnt::{
     dfont_open, sfnt_create_FontFile_stream, sfnt_open, sfnt_read_table_directory,
-    sfnt_require_table, sfnt_set_table,
+    sfnt_require_table, sfnt_set_table, SfntType,
 };
 use crate::bridge::DisplayExt;
 use crate::{info, warn};
@@ -71,7 +71,7 @@ pub(crate) use sfnt_table_info::SfntTableInfo;
 
 /// Tag consts for SfntTableInfo.
 pub(crate) mod sfnt_table_info {
-    pub(crate) type Tag = &'static [u8; 4];
+    pub(crate) use ttf_parser::Tag;
 
     /*
      * The 'name' table should be preserved since it contains copyright
@@ -101,29 +101,23 @@ pub(crate) mod sfnt_table_info {
             self.name
         }
 
-        /// # Safety
-        /// This function assumes the name is valid utf8.
-        pub(crate) unsafe fn name_str(&self) -> &str {
-            &std::str::from_utf8_unchecked(self.name)
-        }
-
         pub(crate) const fn must_exist(&self) -> bool {
             self.must_exist
         }
     }
 
-    pub(crate) const OS_2: Tag = b"OS/2";
-    pub(crate) const HEAD: Tag = b"head";
-    pub(crate) const HHEA: Tag = b"hhea";
-    pub(crate) const LOCA: Tag = b"loca";
-    pub(crate) const MAXP: Tag = b"maxp";
-    pub(crate) const NAME: Tag = b"name";
-    pub(crate) const GLYF: Tag = b"glyf";
-    pub(crate) const HMTX: Tag = b"hmtx";
-    pub(crate) const FPGM: Tag = b"fpgm";
-    pub(crate) const CVT: Tag = b"cvt ";
-    pub(crate) const PREP: Tag = b"prep";
-    pub(crate) const CMAP: Tag = b"cmap";
+    pub(crate) const OS_2: Tag = Tag::from_bytes(b"OS/2");
+    pub(crate) const HEAD: Tag = Tag::from_bytes(b"head");
+    pub(crate) const HHEA: Tag = Tag::from_bytes(b"hhea");
+    pub(crate) const LOCA: Tag = Tag::from_bytes(b"loca");
+    pub(crate) const MAXP: Tag = Tag::from_bytes(b"maxp");
+    pub(crate) const NAME: Tag = Tag::from_bytes(b"name");
+    pub(crate) const GLYF: Tag = Tag::from_bytes(b"glyf");
+    pub(crate) const HMTX: Tag = Tag::from_bytes(b"hmtx");
+    pub(crate) const FPGM: Tag = Tag::from_bytes(b"fpgm");
+    pub(crate) const CVT: Tag = Tag::from_bytes(b"cvt ");
+    pub(crate) const PREP: Tag = Tag::from_bytes(b"prep");
+    pub(crate) const CMAP: Tag = Tag::from_bytes(b"cmap");
 }
 
 /* Acoid conflict with CHAR ... from <winnt.h>.  */
@@ -166,7 +160,7 @@ pub(crate) unsafe fn pdf_font_open_truetype(font: &mut pdf_font) -> i32 {
     } else {
         return -1i32;
     };
-    let error = if sfont.type_0 == 1i32 << 4i32 {
+    let error = if sfont.type_0 == SfntType::FontCollection {
         let offset = ttc_read_offset(&sfont, index);
         if offset == 0_u32 {
             panic!("Invalid TTC index in {}.", ident);
@@ -921,10 +915,13 @@ pub(crate) unsafe fn pdf_font_load_truetype(font: &mut pdf_font) -> i32 {
     } else {
         panic!("Unable to open TrueType/dfont font file: {}", font.ident);
     };
-    if sfont.type_0 != 1 << 0 && sfont.type_0 != 1 << 4 && sfont.type_0 != 1 << 8 {
+    if sfont.type_0 != SfntType::TrueType
+        && sfont.type_0 != SfntType::FontCollection
+        && sfont.type_0 != SfntType::DFont
+    {
         panic!("Font \"{}\" not a TrueType/dfont font?", font.ident);
     }
-    let error = if sfont.type_0 == 1i32 << 4i32 {
+    let error = if sfont.type_0 == SfntType::FontCollection {
         let offset = ttc_read_offset(&mut sfont, index);
         if offset == 0_u32 {
             panic!("Invalid TTC index in {}.", font.ident);
@@ -965,7 +962,7 @@ pub(crate) unsafe fn pdf_font_load_truetype(font: &mut pdf_font) -> i32 {
         if sfnt_require_table(&mut sfont, table).is_err() {
             panic!(
                 "Required TrueType table \"{}\" does not exist in font: {}",
-                table.name_str(),
+                table.name(),
                 font.ident
             );
         }

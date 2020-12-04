@@ -28,8 +28,11 @@
 
 use std::io::Read;
 
+use ttf_parser::Tag;
+
 use super::dpx_sfnt::{
     dfont_open, sfnt_find_table_pos, sfnt_locate_table, sfnt_open, sfnt_read_table_directory,
+    SfntType,
 };
 use crate::{info, warn};
 use std::ptr;
@@ -688,7 +691,7 @@ unsafe fn handle_CIDFont(
     mut csi: *mut CIDSysInfo,
 ) -> i32 {
     assert!(!csi.is_null());
-    let offset = sfnt_find_table_pos(sfont, b"CFF ") as i32;
+    let offset = sfnt_find_table_pos(sfont, Tag::from_bytes(b"CFF ")) as i32;
     if offset == 0i32 {
         (*csi).registry = "".into();
         (*csi).ordering = "".into();
@@ -1036,8 +1039,8 @@ unsafe fn create_ToUnicode_cmap(
     // prepare_CIDFont_from_sfnt(sfont);
     let mut offset: u32 = 0;
     let mut flag = true;
-    if sfont.type_0 != 1 << 2 || sfnt_read_table_directory(sfont, 0) < 0 || {
-        offset = sfnt_find_table_pos(sfont, b"CFF ");
+    if sfont.type_0 != SfntType::PostScript || sfnt_read_table_directory(sfont, 0) < 0 || {
+        offset = sfnt_find_table_pos(sfont, Tag::from_bytes(b"CFF "));
         offset == 0
     } {
         flag = false;
@@ -1229,8 +1232,8 @@ pub(crate) unsafe fn otf_create_ToUnicode_stream(
         return ptr::null_mut();
     };
     match sfont.type_0 {
-        256 => offset = sfont.offset,
-        16 => {
+        SfntType::DFont => offset = sfont.offset,
+        SfntType::FontCollection => {
             offset = ttc_read_offset(&mut sfont, ttc_index);
             if offset == 0_u32 {
                 panic!("Invalid TTC index");
@@ -1390,14 +1393,14 @@ pub(crate) unsafe fn otf_load_Unicode_CMap(
         sfnt_open(handle.unwrap())
     };
     match sfont.type_0 {
-        16 => {
+        SfntType::FontCollection => {
             offset = ttc_read_offset(&mut sfont, ttc_index);
             if offset == 0_u32 {
                 panic!("Invalid TTC index");
             }
         }
-        1 | 4 => offset = 0_u32,
-        256 => offset = sfont.offset,
+        SfntType::TrueType | SfntType::PostScript => offset = 0_u32,
+        SfntType::DFont => offset = sfont.offset,
         _ => {
             panic!("Not a OpenType/TrueType/TTC font?: {}", map_name);
         }
@@ -1446,7 +1449,7 @@ pub(crate) unsafe fn otf_load_Unicode_CMap(
     } else {
         cmap_name = base_name;
     }
-    let is_cidfont = if sfont.type_0 == 1i32 << 2i32 {
+    let is_cidfont = if sfont.type_0 == SfntType::PostScript {
         handle_CIDFont(&mut sfont, &mut GIDToCIDMap, &mut csi)
     } else {
         0

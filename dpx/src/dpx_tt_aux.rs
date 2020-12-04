@@ -34,7 +34,7 @@ use crate::dpx_pdfobj::{pdf_dict, pdf_string, PushObj};
 
 use std::io::{Seek, SeekFrom};
 
-use super::dpx_sfnt::sfnt;
+use super::dpx_sfnt::{sfnt, SfntType};
 
 static mut verbose: i32 = 0i32;
 
@@ -43,7 +43,7 @@ pub(crate) unsafe fn tt_aux_set_verbose(level: i32) {
 }
 
 pub(crate) unsafe fn ttc_read_offset(sfont: &sfnt, ttc_idx: i32) -> u32 {
-    if sfont.type_0 != 1i32 << 4i32 {
+    if sfont.type_0 != SfntType::FontCollection {
         panic!("ttc_read_offset(): invalid font type");
     }
     let handle = &mut &*sfont.handle;

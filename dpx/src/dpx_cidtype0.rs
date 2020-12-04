@@ -29,8 +29,10 @@
 use std::ffi::CStr;
 use std::ptr;
 
+use ttf_parser::Tag;
+
 use super::dpx_sfnt::{
-    sfnt_find_table_pos, sfnt_locate_table, sfnt_open, sfnt_read_table_directory,
+    sfnt_find_table_pos, sfnt_locate_table, sfnt_open, sfnt_read_table_directory, SfntType,
 };
 use crate::{info, warn};
 
@@ -237,7 +239,7 @@ unsafe fn add_CIDVMetrics(
      * No accurate vertical metrics can be obtained by simple way if the
      * font does not have VORG table. Only CJK fonts may have VORG.
      */
-    if sfnt_find_table_pos(sfont, b"VORG") <= 0_u32 {
+    if sfnt_find_table_pos(sfont, Tag::from_bytes(b"VORG")) <= 0_u32 {
         return;
     }
     let vorg = tt_read_VORG_table(sfont).unwrap();
@@ -247,14 +249,14 @@ unsafe fn add_CIDVMetrics(
         + 0.5f64)
         .floor()
         * 1i32 as f64;
-    let vhea = if sfnt_find_table_pos(sfont, b"vhea") > 0 {
+    let vhea = if sfnt_find_table_pos(sfont, Tag::from_bytes(b"vhea")) > 0 {
         Some(tt_read_vhea_table(sfont))
     } else {
         None
     };
     match vhea {
-        Some(vhea) if sfnt_find_table_pos(sfont, b"vmtx") > 0 => {
-            sfnt_locate_table(sfont, b"vmtx");
+        Some(vhea) if sfnt_find_table_pos(sfont, Tag::from_bytes(b"vmtx")) > 0 => {
+            sfnt_locate_table(sfont, Tag::from_bytes(b"vmtx"));
             vmtx = Some(tt_read_longMetrics(
                 &mut &*sfont.handle,
                 maxp.numGlyphs,
@@ -554,13 +556,13 @@ unsafe fn CIDFont_type0_try_open(
     /*if sfont.is_null() {
         return Err(CidOpenError::NOT_SFNT_FONT);
     }*/
-    if sfont.type_0 == 1i32 << 4i32 {
+    if sfont.type_0 == SfntType::FontCollection {
         offset = ttc_read_offset(&sfont, index)
     }
-    if sfont.type_0 != 1i32 << 4i32 && sfont.type_0 != 1i32 << 2i32
+    if sfont.type_0 != SfntType::FontCollection && sfont.type_0 != SfntType::PostScript
         || sfnt_read_table_directory(&mut sfont, offset) < 0i32
         || {
-            offset = sfnt_find_table_pos(&sfont, b"CFF ");
+            offset = sfnt_find_table_pos(&sfont, Tag::from_bytes(b"CFF "));
             offset == 0_u32
         }
     {
@@ -862,13 +864,13 @@ pub(crate) unsafe fn CIDFont_type0_open(
         } else {
             return None;
         };
-        if sfont.type_0 == 1i32 << 4i32 {
+        if sfont.type_0 == SfntType::FontCollection {
             offset = ttc_read_offset(&mut sfont, (*opt).index)
         }
-        if sfont.type_0 != 1i32 << 4i32 && sfont.type_0 != 1i32 << 2i32
-            || sfnt_read_table_directory(&mut sfont, offset) < 0i32
+        if sfont.type_0 != SfntType::FontCollection && sfont.type_0 != SfntType::PostScript
+            || sfnt_read_table_directory(&mut sfont, offset) < 0
             || {
-                offset = sfnt_find_table_pos(&mut sfont, b"CFF ");
+                offset = sfnt_find_table_pos(&mut sfont, Tag::from_bytes(b"CFF "));
                 offset == 0_u32
             }
         {

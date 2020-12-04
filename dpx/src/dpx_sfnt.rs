@@ -26,6 +26,8 @@
     non_upper_case_globals
 )]
 
+use ttf_parser::Tag;
+
 use super::dpx_numbers::GetFromFile;
 use crate::dpx_pdfobj::{pdf_stream, STREAM_COMPRESS};
 use crate::dpx_truetype::SfntTableInfo;
@@ -55,10 +57,21 @@ impl PutBE<i16> for Vec<u8> {
     }
 }
 
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum SfntType {
+    TrueType,
+    OpenType,
+    PostScript,
+    FontCollection,
+    DFont,
+    Unknown,
+}
+
 use bridge::InFile;
 #[derive(Clone)]
 pub(crate) struct sfnt_table {
-    pub(crate) tag: [u8; 4],
+    pub(crate) tag: Tag,
     pub(crate) check_sum: u32,
     pub(crate) offset: u32,
     pub(crate) length: u32,
@@ -76,7 +89,7 @@ pub(crate) struct sfnt_table_directory {
 }
 #[derive(Clone)]
 pub(crate) struct sfnt {
-    pub(crate) type_0: i32,
+    pub(crate) type_0: SfntType,
     pub(crate) directory: Option<Box<sfnt_table_directory>>,
     pub(crate) handle: Rc<InFile>,
     pub(crate) offset: u32,
@@ -87,16 +100,16 @@ pub(crate) fn sfnt_open(mut handle: InFile) -> sfnt {
     /* typefaces position */
     let typ = u32::get(&mut handle); /* resource id */
     let typ = if typ as u64 == 0x10000 || typ as u64 == 0x74727565 {
-        1 << 0
+        SfntType::TrueType
     } else if typ as u64 == 0x10000 {
-        1 << 1
+        SfntType::OpenType // NOTE: unreachable
     } else if typ as u64 == 0x4f54544f {
-        1 << 2
+        SfntType::PostScript
     } else if typ as u64 == 0x74746366 {
-        1 << 4
+        SfntType::FontCollection
     } else {
-        typ
-    } as i32;
+        SfntType::Unknown
+    };
     handle.seek(SeekFrom::Start(0)).unwrap();
     sfnt {
         type_0: typ,
@@ -148,7 +161,7 @@ pub(crate) fn dfont_open(mut handle: InFile, index: i32) -> Option<sfnt> {
     handle.seek(SeekFrom::Start(0)).unwrap();
     Some(sfnt {
         handle: Rc::new(handle),
-        type_0: 1 << 8,
+        type_0: SfntType::DFont,
         directory: None,
         offset: ((res_pos as u64 & 0xffffff) + (rdata_pos as u64) + 4) as u32,
     })
@@ -187,16 +200,16 @@ fn sfnt_calc_checksum(data: &[u8]) -> u32 {
     chksum
 }
 
-fn find_table_index(td: Option<&sfnt_table_directory>, tag: &[u8; 4]) -> i32 {
-    td.and_then(|td| (0..td.tables.len()).find(|&idx| tag == &td.tables[idx].tag))
+fn find_table_index(td: Option<&sfnt_table_directory>, tag: Tag) -> i32 {
+    td.and_then(|td| (0..td.tables.len()).find(|&idx| tag == td.tables[idx].tag))
         .map(|idx| idx as i32)
         .unwrap_or(-1)
 }
 
-pub(crate) fn sfnt_set_table(sfont: &mut sfnt, tag: &[u8; 4], data: Vec<u8>) {
+pub(crate) fn sfnt_set_table(sfont: &mut sfnt, tag: Tag, data: Vec<u8>) {
     let td = sfont.directory.as_mut().unwrap();
     let table = sfnt_table {
-        tag: *tag,
+        tag,
         check_sum: sfnt_calc_checksum(&data),
         offset: 0,
         length: data.len() as u32,
@@ -210,7 +223,7 @@ pub(crate) fn sfnt_set_table(sfont: &mut sfnt, tag: &[u8; 4], data: Vec<u8>) {
     }
 }
 
-pub(crate) fn sfnt_find_table_len(sfont: &sfnt, tag: &[u8; 4]) -> u32 {
+pub(crate) fn sfnt_find_table_len(sfont: &sfnt, tag: Tag) -> u32 {
     let idx = find_table_index(sfont.directory.as_deref(), tag);
     if idx < 0 {
         0
@@ -219,7 +232,7 @@ pub(crate) fn sfnt_find_table_len(sfont: &sfnt, tag: &[u8; 4]) -> u32 {
     }
 }
 
-pub(crate) fn sfnt_find_table_pos(sfont: &sfnt, tag: &[u8; 4]) -> u32 {
+pub(crate) fn sfnt_find_table_pos(sfont: &sfnt, tag: Tag) -> u32 {
     let idx = find_table_index(sfont.directory.as_deref(), tag);
     if idx < 0i32 {
         0
@@ -228,7 +241,7 @@ pub(crate) fn sfnt_find_table_pos(sfont: &sfnt, tag: &[u8; 4]) -> u32 {
     }
 }
 
-pub(crate) fn sfnt_locate_table(sfont: &sfnt, tag: &[u8; 4]) -> u32 {
+pub(crate) fn sfnt_locate_table(sfont: &sfnt, tag: Tag) -> u32 {
     let offset = sfnt_find_table_pos(sfont, tag);
     if offset == 0_u32 {
         panic!("sfnt: table not found...");
@@ -252,7 +265,7 @@ pub(crate) fn sfnt_read_table_directory(sfont: &mut sfnt, offset: u32) -> i32 {
     let mut flags = Vec::new();
     let mut tables = Vec::new();
     for _ in 0..num_tables {
-        let tag = u32::get(handle).to_be_bytes();
+        let tag = Tag(u32::get(handle));
         let check_sum = u32::get(handle);
         let offset = u32::get(handle).wrapping_add(sfont.offset);
         let length = u32::get(handle);
@@ -343,7 +356,7 @@ pub(crate) unsafe fn sfnt_create_FontFile_stream(sfont: &mut sfnt) -> pdf_stream
                 offset += 4i32 - offset % 4i32
             }
             let table = &td.tables[i];
-            wbuf.extend(&table.tag);
+            wbuf.extend(&table.tag.to_bytes());
             wbuf.put_be(table.check_sum);
             wbuf.put_be(offset as u32);
             wbuf.put_be(table.length as u32);

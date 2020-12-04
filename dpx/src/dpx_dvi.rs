@@ -30,12 +30,15 @@
 use std::io::{Read, Seek, SeekFrom};
 use std::ptr;
 
+use ttf_parser::Tag;
+
 use crate::bridge::DisplayExt;
 use crate::FromBEByteSlice;
 use std::ffi::{CStr, CString};
 
 use super::dpx_sfnt::{
     dfont_open, sfnt_find_table_pos, sfnt_locate_table, sfnt_open, sfnt_read_table_directory,
+    SfntType,
 };
 use crate::bridge::size_t;
 use crate::mfree;
@@ -1000,9 +1003,9 @@ unsafe fn dvi_locate_native_font(
         } else {
             sfnt_open(handle)
         };
-        if sfont.type_0 == 1 << 4 {
+        if sfont.type_0 == SfntType::FontCollection {
             offset = ttc_read_offset(&mut sfont, index as i32)
-        } else if sfont.type_0 == 1i32 << 8i32 {
+        } else if sfont.type_0 == SfntType::DFont {
             offset = sfont.offset
         }
         sfnt_read_table_directory(&mut sfont, offset);
@@ -1013,9 +1016,9 @@ unsafe fn dvi_locate_native_font(
         font.descent = hhea.descent as i32;
         font.unitsPerEm = head.unitsPerEm as u32;
         font.numGlyphs = maxp.numGlyphs as u32;
-        if layout_dir == 1i32 && sfnt_find_table_pos(&sfont, b"vmtx") > 0_u32 {
+        if layout_dir == 1i32 && sfnt_find_table_pos(&sfont, Tag::from_bytes(b"vmtx")) > 0_u32 {
             let vhea = tt_read_vhea_table(&mut sfont);
-            sfnt_locate_table(&mut sfont, b"vmtx");
+            sfnt_locate_table(&mut sfont, Tag::from_bytes(b"vmtx"));
             font.hvmt = tt_read_longMetrics(
                 &mut &*sfont.handle,
                 maxp.numGlyphs,

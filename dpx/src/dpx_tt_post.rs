@@ -26,6 +26,8 @@
     non_upper_case_globals
 )]
 
+use ttf_parser::Tag;
+
 use super::dpx_numbers::GetFromFile;
 use super::dpx_sfnt::sfnt_locate_table;
 use crate::warn;
@@ -149,7 +151,7 @@ unsafe fn read_v2_post_names<R: Read>(mut post: *mut tt_post_table, handle: &mut
 
 pub(crate) unsafe fn tt_read_post_table(sfont: &sfnt) -> *mut tt_post_table {
     /* offset = */
-    sfnt_locate_table(sfont, b"post"); /* Fixed */
+    sfnt_locate_table(sfont, Tag::from_bytes(b"post")); /* Fixed */
     let mut post = new((1_u64).wrapping_mul(::std::mem::size_of::<tt_post_table>() as u64) as u32)
         as *mut tt_post_table; /* Fixed */
     let handle = &mut &*sfont.handle;

@@ -21,6 +21,8 @@
 */
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
 
+use ttf_parser::Tag;
+
 use super::dpx_numbers::GetFromFile;
 use crate::warn;
 
@@ -381,7 +383,7 @@ pub(crate) fn tt_read_hhea_table(sfont: &sfnt) -> Box<tt_hhea_table> {
 /* vhea */
 
 pub(crate) fn tt_read_vhea_table(sfont: &sfnt) -> Box<tt_vhea_table> {
-    sfnt_locate_table(sfont, b"vhea");
+    sfnt_locate_table(sfont, Tag::from_bytes(b"vhea"));
     let handle = &mut &*sfont.handle;
     let version = u32::get(handle);
     let vertTypoAscender = i16::get(handle);
@@ -400,7 +402,7 @@ pub(crate) fn tt_read_vhea_table(sfont: &sfnt) -> Box<tt_vhea_table> {
     }
     let metricDataFormat = i16::get(handle);
     let numOfLongVerMetrics = u16::get(handle);
-    let len = sfnt_find_table_len(sfont, b"vmtx");
+    let len = sfnt_find_table_len(sfont, Tag::from_bytes(b"vmtx"));
     let numOfExSideBearings = len
         .wrapping_sub((numOfLongVerMetrics as i32 * 4i32) as u32)
         .wrapping_div(2_u32) as u16;
@@ -425,10 +427,10 @@ pub(crate) fn tt_read_vhea_table(sfont: &sfnt) -> Box<tt_vhea_table> {
 }
 
 pub(crate) fn tt_read_VORG_table(sfont: &sfnt) -> Option<Box<tt_VORG_table>> {
-    let offset = sfnt_find_table_pos(sfont, b"VORG");
+    let offset = sfnt_find_table_pos(sfont, Tag::from_bytes(b"VORG"));
     let handle = &mut &*sfont.handle;
     if offset > 0 {
-        sfnt_locate_table(sfont, b"VORG");
+        sfnt_locate_table(sfont, Tag::from_bytes(b"VORG"));
         if u16::get(handle) as i32 != 1i32 || u16::get(handle) as i32 != 0i32 {
             panic!("Unsupported VORG version.");
         }

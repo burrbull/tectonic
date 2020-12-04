@@ -28,9 +28,11 @@
 
 use std::ptr;
 
+use ttf_parser::Tag;
+
 use super::dpx_sfnt::{
     dfont_open, sfnt_create_FontFile_stream, sfnt_find_table_pos, sfnt_open,
-    sfnt_read_table_directory, sfnt_require_table,
+    sfnt_read_table_directory, sfnt_require_table, SfntType,
 };
 use crate::dpx_truetype::SfntTableInfo;
 use crate::{info, warn, FromBEByteSlice};
@@ -543,13 +545,13 @@ pub(crate) unsafe fn CIDFont_type2_dofont(font: &mut CIDFont) {
         panic!("Could not open TTF/dfont file: {}", font.ident);
     };
     match sfont.type_0 {
-        16 => {
+        SfntType::FontCollection => {
             offset = ttc_read_offset(&mut sfont, (*font.options).index);
             if offset == 0_u32 {
                 panic!("Invalid TTC index in {}.", font.ident);
             }
         }
-        1 => {
+        SfntType::TrueType => {
             if (*font.options).index > 0i32 {
                 panic!(
                     "Found TrueType font file while expecting TTC file ({}).",
@@ -558,7 +560,7 @@ pub(crate) unsafe fn CIDFont_type2_dofont(font: &mut CIDFont) {
             }
             offset = 0_u32
         }
-        256 => offset = sfont.offset,
+        SfntType::DFont => offset = sfont.offset,
         _ => {
             panic!("Not a TrueType/TTC font ({})?", font.ident);
         }
@@ -854,7 +856,7 @@ pub(crate) unsafe fn CIDFont_type2_dofont(font: &mut CIDFont) {
         if sfnt_require_table(&mut sfont, table).is_err() {
             panic!(
                 "Some required TrueType table ({}) does not exist.",
-                table.name_str()
+                table.name()
             );
         }
     }
@@ -928,14 +930,14 @@ pub(crate) unsafe fn CIDFont_type2_open(
         return None;
     };
     match sfont.type_0 {
-        16 => offset = ttc_read_offset(&mut sfont, (*opt).index),
-        1 => {
-            if (*opt).index > 0i32 {
+        SfntType::FontCollection => offset = ttc_read_offset(&mut sfont, (*opt).index),
+        SfntType::TrueType => {
+            if (*opt).index > 0 {
                 panic!("Invalid TTC index (not TTC font): {}", name);
             }
             offset = 0_u32
         }
-        256 => offset = sfont.offset,
+        SfntType::DFont => offset = sfont.offset,
         _ => {
             return None;
         }
@@ -944,7 +946,9 @@ pub(crate) unsafe fn CIDFont_type2_open(
         panic!("Reading TrueType table directory failed.");
     }
     /* Ignore TrueType Collection with CFF table. */
-    if sfont.type_0 == 1i32 << 4i32 && sfnt_find_table_pos(&sfont, b"CFF ") != 0 {
+    if sfont.type_0 == SfntType::FontCollection
+        && sfnt_find_table_pos(&sfont, Tag::from_bytes(b"CFF ")) != 0
+    {
         return None;
     }
     /* MAC-ROMAN-EN-POSTSCRIPT or WIN-UNICODE-EN(US)-POSTSCRIPT */

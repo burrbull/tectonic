@@ -26,6 +26,8 @@
     non_upper_case_globals
 )]
 
+use ttf_parser::Tag;
+
 use crate::bridge::DisplayExt;
 use std::ffi::{CStr, CString};
 use std::io::Read;
@@ -671,7 +673,7 @@ unsafe fn otl_gsub_read_feat(gsub: &mut otl_gsub_tab, sfont: &sfnt) -> i32 {
         count: 0,
         value: ptr::null_mut(),
     };
-    let gsub_offset = sfnt_find_table_pos(sfont, b"GSUB");
+    let gsub_offset = sfnt_find_table_pos(sfont, Tag::from_bytes(b"GSUB"));
     let handle = &mut &*sfont.handle;
     if gsub_offset == 0_u32 {
         return -1i32;
