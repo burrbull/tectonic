@@ -133,7 +133,7 @@ pub(crate) unsafe fn pdf_font_open_type1c(font: &mut pdf_font) -> i32 {
     }
     let handle = handle.unwrap();
     let mut sfont = sfnt_open(handle);
-    if sfont.type_0 != SfntType::PostScript || sfnt_read_table_directory(&mut sfont, 0) < 0 {
+    if sfont.type_0 != SfntType::OpenType || sfnt_read_table_directory(&mut sfont, 0) < 0 {
         panic!("Not a CFF/OpenType font (9)?");
     }
     let offset = sfnt_find_table_pos(&sfont, Tag::from_bytes(b"CFF "));
@@ -291,7 +291,7 @@ pub(crate) unsafe fn pdf_font_load_type1c(font: &mut pdf_font) -> i32 {
     if sfnt_read_table_directory(&mut sfont, 0_u32) < 0 {
         panic!("Could not read OpenType table directory: {}", font.ident);
     }
-    if sfont.type_0 != SfntType::PostScript || {
+    if sfont.type_0 != SfntType::OpenType || {
         offset = sfnt_find_table_pos(&sfont, Tag::from_bytes(b"CFF ")) as i32;
         offset == 0
     } {

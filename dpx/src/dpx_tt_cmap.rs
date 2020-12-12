@@ -1039,7 +1039,7 @@ unsafe fn create_ToUnicode_cmap(
     // prepare_CIDFont_from_sfnt(sfont);
     let mut offset: u32 = 0;
     let mut flag = true;
-    if sfont.type_0 != SfntType::PostScript || sfnt_read_table_directory(sfont, 0) < 0 || {
+    if sfont.type_0 != SfntType::OpenType || sfnt_read_table_directory(sfont, 0) < 0 || {
         offset = sfnt_find_table_pos(sfont, Tag::from_bytes(b"CFF "));
         offset == 0
     } {
@@ -1399,7 +1399,7 @@ pub(crate) unsafe fn otf_load_Unicode_CMap(
                 panic!("Invalid TTC index");
             }
         }
-        SfntType::TrueType | SfntType::PostScript => offset = 0_u32,
+        SfntType::TrueType | SfntType::OpenType => offset = 0_u32,
         SfntType::DFont => offset = sfont.offset,
         _ => {
             panic!("Not a OpenType/TrueType/TTC font?: {}", map_name);
@@ -1449,7 +1449,7 @@ pub(crate) unsafe fn otf_load_Unicode_CMap(
     } else {
         cmap_name = base_name;
     }
-    let is_cidfont = if sfont.type_0 == SfntType::PostScript {
+    let is_cidfont = if sfont.type_0 == SfntType::OpenType {
         handle_CIDFont(&mut sfont, &mut GIDToCIDMap, &mut csi)
     } else {
         0

@@ -559,7 +559,7 @@ unsafe fn CIDFont_type0_try_open(
     if sfont.type_0 == SfntType::FontCollection {
         offset = ttc_read_offset(&sfont, index)
     }
-    if sfont.type_0 != SfntType::FontCollection && sfont.type_0 != SfntType::PostScript
+    if sfont.type_0 != SfntType::FontCollection && sfont.type_0 != SfntType::OpenType
         || sfnt_read_table_directory(&mut sfont, offset) < 0i32
         || {
             offset = sfnt_find_table_pos(&sfont, Tag::from_bytes(b"CFF "));
@@ -867,7 +867,7 @@ pub(crate) unsafe fn CIDFont_type0_open(
         if sfont.type_0 == SfntType::FontCollection {
             offset = ttc_read_offset(&mut sfont, (*opt).index)
         }
-        if sfont.type_0 != SfntType::FontCollection && sfont.type_0 != SfntType::PostScript
+        if sfont.type_0 != SfntType::FontCollection && sfont.type_0 != SfntType::OpenType
             || sfnt_read_table_directory(&mut sfont, offset) < 0
             || {
                 offset = sfnt_find_table_pos(&mut sfont, Tag::from_bytes(b"CFF "));

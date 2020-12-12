@@ -62,7 +62,6 @@ impl PutBE<i16> for Vec<u8> {
 pub(crate) enum SfntType {
     TrueType,
     OpenType,
-    PostScript,
     FontCollection,
     DFont,
     Unknown,
@@ -101,10 +100,8 @@ pub(crate) fn sfnt_open(mut handle: InFile) -> sfnt {
     let typ = u32::get(&mut handle); /* resource id */
     let typ = if typ as u64 == 0x10000 || typ as u64 == 0x74727565 {
         SfntType::TrueType
-    } else if typ as u64 == 0x10000 {
-        SfntType::OpenType // NOTE: unreachable
     } else if typ as u64 == 0x4f54544f {
-        SfntType::PostScript
+        SfntType::OpenType
     } else if typ as u64 == 0x74746366 {
         SfntType::FontCollection
     } else {
