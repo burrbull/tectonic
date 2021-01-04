@@ -3876,12 +3876,12 @@ pub(crate) unsafe fn tt_run_engine(dump_name: &str, input_file_name: &str) -> TT
         primitive(
             "XeTeXfeaturename",
             Cmd::Convert,
-            ConvertCode::XetexFeatureName,
+            ConvertCode::XetexFeatureNameOld,
         );
         primitive(
             "XeTeXselectorname",
             Cmd::Convert,
-            ConvertCode::XetexSelectorName,
+            ConvertCode::XetexSelectorNameOld,
         );
 
         primitive(
