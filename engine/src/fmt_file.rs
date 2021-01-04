@@ -1215,6 +1215,8 @@ trait Dump {
     }
 }
 
+static mut count_fmt_size: usize = 0;
+
 impl<W> Dump for W
 where
     Self: Write,
@@ -1227,6 +1229,16 @@ where
         let p = unsafe { p.to_u8_slice() };
         let item_size = std::mem::size_of::<T>();
         let mut v = Vec::with_capacity(item_size * nitems);
+        
+        if unsafe { count_fmt_size } + v.capacity() > 0x0001_21AF {
+            panic!(
+                "failed at 0x{:X}, size {}, itemsize = {}",
+                unsafe { count_fmt_size },
+                v.capacity(),
+                item_size,
+            );
+        }
+        
         for i in p.chunks(item_size) {
             v.extend(i.iter().rev());
         }
@@ -1239,6 +1251,7 @@ where
                 unsafe { &name_of_fmt_file },
             )
         });
+        unsafe { count_fmt_size += v.capacity(); }
     }
 }
 

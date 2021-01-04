@@ -999,6 +999,7 @@ pub(crate) unsafe fn ot_get_font_metrics(
 }
 pub(crate) unsafe fn ot_font_get(what: i32, engine: &XeTeXLayoutEngine) -> i32 {
     let fontInst = engine.get_font();
+dbg!(what);
     match what {
         1 => return countGlyphs(fontInst) as i32,
         8 => {
