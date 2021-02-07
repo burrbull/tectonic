@@ -1544,7 +1544,7 @@ pub(crate) unsafe fn measure_native_glyph(node: &mut Glyph, use_glyph_metrics: b
             let mut ht = 0_f32;
             let mut dp = 0_f32;
             if use_glyph_metrics {
-                aat::GetGlyphHeightDepth_AAT(*engine.attributes, gid, &mut ht, &mut dp);
+                aat::GetGlyphHeightDepth_AAT(engine.attributes, gid, &mut ht, &mut dp);
             }
             (ht, dp)
         }

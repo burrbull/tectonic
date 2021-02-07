@@ -17,10 +17,9 @@ use std::ptr;
 
 use crate::cmd::XetexExtCmd;
 use crate::core_memory::{xcalloc, xmalloc};
-use crate::node::NativeWord;
 use crate::xetex_ext::{readCommonFeatures, read_double};
 use crate::xetex_ini::{
-    loaded_font_flags, loaded_font_letter_space, FONT_LAYOUT_ENGINE, FONT_LETTER_SPACE,
+    loaded_font_flags, loaded_font_letter_space,
 };
 use crate::xetex_xetex0::font_feature_warning;
 use libc::free;
@@ -120,7 +119,7 @@ impl TextLayoutEngine for AATLayoutEngine {
 
         let mut layout = NodeLayout {
             lsDelta: None,
-            width: 0,
+            width: Scaled::ZERO,
             total_glyph_count: 0,
             glyph_info: ptr::null_mut(),
         };
@@ -133,7 +132,7 @@ impl TextLayoutEngine for AATLayoutEngine {
         CFRelease(attrString as CFTypeRef);
         line = CTTypesetterCreateLine(typesetter, CFRangeMake(0, txtLen));
         if justify {
-            let lineWidth = TeXtoPSPoints(request.line_width);
+            let lineWidth = TeXtoPSPoints(request.line_width.into());
             let justifiedLine = CTLineCreateJustifiedLine(
                 line,
                 TeXtoPSPoints(Scaled(0x40000000).into()),
@@ -216,7 +215,7 @@ impl TextLayoutEngine for AATLayoutEngine {
         }
 
         layout.total_glyph_count = totalGlyphCount as u16;
-        layout.glyph_info = glyph_info;
+        layout.glyph_info = glyph_info as *mut _;
 
         if !justify {
             layout.width = Scaled(width as i32);
@@ -312,7 +311,7 @@ impl TextLayoutEngine for AATLayoutEngine {
 
     /// getGlyphName
     unsafe fn glyph_name(&self, gid: GlyphID) -> String {
-        GetGlyphNameFromCTFont(font_from_attributes(self.attributes), gid, len)
+        GetGlyphNameFromCTFont(font_from_attributes(self.attributes), gid)
     }
 
     unsafe fn glyph_width(&self, gid: u32) -> f64 {
@@ -421,7 +420,7 @@ pub(crate) unsafe fn GetGlyphHeightDepth_AAT(
     ht: *mut libc::c_float,
     dp: *mut libc::c_float,
 ) {
-    let bbox = GetGlyphBBox_AAT(attributes, gid).unwrap_or(GlyphBBox::zero);
+    let bbox = GetGlyphBBox_AAT(attributes, gid).unwrap_or(GlyphBBox::zero());
     *ht = bbox.yMax;
     *dp = -bbox.yMin;
 }
@@ -744,7 +743,7 @@ unsafe fn getLastResort() -> CFStringRef {
     return kLastResort;
 }
 
-use crate::xetex_ext::{Font, NativeFont, NativeFont::*};
+use crate::xetex_ext::{NativeFont, NativeFont::*};
 
 pub(crate) unsafe fn loadAATfont(
     mut descriptor: CTFontDescriptorRef,
