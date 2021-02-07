@@ -315,30 +315,43 @@ impl Drop for ImmutableCStringList {
 }
 
 impl TextLayoutEngine for XeTeXLayoutEngine {
-    /// getFontRef
-    fn platform_font_ref(&self) -> PlatformFontRef {
-        self.fontRef
+    // AAT casualties
+    /*
+        /// getFontRef
+        fn platform_font_ref(&self) -> PlatformFontRef {
+            self.fontRef
+        }
+        /// getFontInst
+        fn font_instance(&self) -> &XeTeXFontInst {
+            &self.font
+        }
+    */
+    // getGlyphWidth
+    unsafe fn glyph_width(&self, gid: u32) -> f64 {
+        self.font.get_glyph_width(gid as GlyphID) as f64
     }
-    /// getFontInst
-    fn font_instance(&self) -> &XeTeXFontInst {
-        &self.font
-    }
+
     /// getFontFilename
     fn font_filename(&self, index: &mut u32) -> String {
         self.font.get_filename(index).to_string()
     }
 
     /// getExtendFactor
-    fn extend_factor(&self) -> f32 {
-        self.extend
+    fn extend_factor(&self) -> f64 {
+        self.extend as f64
     }
     /// getPointSize
-    fn point_size(&self) -> f32 {
-        self.font.get_point_size()
+    fn point_size(&self) -> f64 {
+        self.font.get_point_size() as f64
     }
     /// getAscentAndDescent
     fn ascent_and_descent(&self) -> (f32, f32) {
         (self.font.get_ascent(), self.font.get_descent())
+    }
+
+    /// getGlyphName
+    unsafe fn glyph_name(&self, gid: GlyphID) -> String {
+        self.font.get_glyph_name(gid)
     }
 
     /// getCapAndXHeight
@@ -349,22 +362,14 @@ impl TextLayoutEngine for XeTeXLayoutEngine {
     fn embolden_factor(&self) -> f32 {
         self.embolden
     }
-    /// getDefaultDirection
-    // TODO: TextDirection
-    fn default_direction(&self) -> i32 {
-        unsafe {
-            let script: hb_script_t = self.hbBuffer.get_script();
-            if hb_script_get_horizontal_direction(script) as u32 == HB_DIRECTION_RTL as u32 {
-                0xff
-            } else {
-                0xfe
-            }
-        }
-    }
 
     /// getRgbValue
     fn rgb_value(&self) -> u32 {
         self.rgbValue
+    }
+
+    unsafe fn slant_factor(&self) -> f64 {
+        self.slant as f64
     }
 
     /// getGlyphBounds (had out param)
@@ -381,8 +386,8 @@ impl TextLayoutEngine for XeTeXLayoutEngine {
             })
     }
 
-    unsafe fn get_glyph_width_from_engine(&self, glyphID: u32) -> f32 {
-        self.extend * self.font.get_glyph_width(glyphID as GlyphID)
+    unsafe fn get_glyph_width_from_engine(&self, glyphID: u32) -> f64 {
+        (self.extend * self.font.get_glyph_width(glyphID as GlyphID)) as f64
     }
 
     /// getGlyphHeightDepth (had out params height, depth)
@@ -403,9 +408,9 @@ impl TextLayoutEngine for XeTeXLayoutEngine {
     }
 
     /// getGlyphItalCorr
-    unsafe fn glyph_ital_correction(&self, glyphID: u32) -> Option<f32> {
+    unsafe fn glyph_ital_correction(&self, glyphID: u32) -> Option<f64> {
         // TODO: return none if glyph not found
-        Some(self.extend * self.font.get_glyph_ital_corr(glyphID as GlyphID))
+        Some(self.extend as f64 * self.font.get_glyph_ital_corr(glyphID as GlyphID) as f64)
     }
 
     /// mapCharToGlyph
@@ -458,7 +463,7 @@ impl TextLayoutEngine for XeTeXLayoutEngine {
             pBiDi,
             txt.as_ptr() as *const icu::UChar,
             txt.len() as i32,
-            self.default_direction() as icu::UBiDiLevel,
+            getDefaultDirection(self) as icu::UBiDiLevel,
             ptr::null_mut(),
             &mut errorCode,
         );
@@ -1602,6 +1607,18 @@ pub(crate) mod hb {
     impl Drop for HbBuffer {
         fn drop(&mut self) {
             unsafe { hb_buffer_destroy(self.0) }
+        }
+    }
+}
+
+/// getDefaultDirection
+fn getDefaultDirection(engine: &XeTeXLayoutEngine) -> i32 {
+    unsafe {
+        let script: hb_script_t = engine.hbBuffer.get_script();
+        if hb_script_get_horizontal_direction(script) as u32 == HB_DIRECTION_RTL as u32 {
+            0xff
+        } else {
+            0xfe
         }
     }
 }
