@@ -18,9 +18,7 @@ use std::ptr;
 use crate::cmd::XetexExtCmd;
 use crate::core_memory::{xcalloc, xmalloc};
 use crate::xetex_ext::{readCommonFeatures, read_double};
-use crate::xetex_ini::{
-    loaded_font_flags, loaded_font_letter_space,
-};
+use crate::xetex_ini::{loaded_font_flags, loaded_font_letter_space};
 use crate::xetex_xetex0::font_feature_warning;
 use libc::free;
 pub(crate) type Boolean = u8;
@@ -113,8 +111,8 @@ impl TextLayoutEngine for AATLayoutEngine {
         let typesetter;
         let mut line;
 
-        let mut txtLen = request.text.len() as CFIndex;
-        let mut txtPtr: *const UniChar = request.text.as_ptr();
+        let txtLen = request.text.len() as CFIndex;
+        let txtPtr: *const UniChar = request.text.as_ptr();
         let justify = request.justify;
 
         let mut layout = NodeLayout {

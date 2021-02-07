@@ -45,15 +45,6 @@ pub(crate) enum Font {
     Native(NativeFont),
 }
 
-impl Font {
-    pub(crate) fn as_native(&self) -> &NativeFont {
-        match self {
-            Font::Native(nf) => nf,
-            _ => panic!("Not native font"),
-        }
-    }
-}
-
 pub(crate) enum NativeFont {
     #[cfg(target_os = "macos")]
     Aat(crate::xetex_aatfont::AATLayoutEngine),
@@ -1114,9 +1105,9 @@ pub(crate) unsafe fn make_font_def(f: usize) -> Vec<u8> {
     let slant;
     #[allow(unused_assignments)]
     let mut embolden: f32 = 0.;
-    match &FONT_LAYOUT_ENGINE[f].as_native() {
+    match &FONT_LAYOUT_ENGINE[f] {
         #[cfg(target_os = "macos")]
-        Aat(engine) => {
+        Font::Native(Aat(engine)) => {
             let font = CFDictionaryGetValue(
                 engine.attributes,
                 kCTFontAttributeName as *const libc::c_void,
@@ -1155,7 +1146,7 @@ pub(crate) unsafe fn make_font_def(f: usize) -> Vec<u8> {
             let fSize = CTFontGetSize(font);
             size = Scaled::from(fSize);
         }
-        Otgr(engine) => {
+        Font::Native(Otgr(engine)) => {
             /* fontRef = */
             //getFontRef(engine);
             filename = engine.font_filename(&mut index);
@@ -1169,6 +1160,7 @@ pub(crate) unsafe fn make_font_def(f: usize) -> Vec<u8> {
             embolden = engine.get_embolden_factor();
             size = Scaled::from(engine.point_size() as f64)
         }
+        _ => panic!("Not native font"),
     }
     /* parameters after internal font ID:
     //  size[4]
@@ -1388,16 +1380,16 @@ pub(crate) unsafe fn real_get_native_glyph(node: &NativeWord, index: u32) -> u16
 }
 pub(crate) unsafe fn store_justified_native_glyphs(node: &mut NativeWord) {
     let f = node.font() as usize;
-    match &mut FONT_LAYOUT_ENGINE[f].as_native() {
+    match &mut FONT_LAYOUT_ENGINE[f] {
         #[cfg(target_os = "macos")]
-        Aat(engine) => {
+        Font::Native(Aat(engine)) => {
             /* separate Mac-only codepath for AAT fonts */
             let request = LayoutRequest::from_node(node, true);
             let layout = engine.layout_text(request);
             layout.write_node(node);
             return;
         }
-        Otgr(engine) => {
+        Font::Native(Otgr(engine)) => {
             /* save desired width */
             let savedWidth = node.width();
             node.set_metrics(false);
@@ -1435,6 +1427,7 @@ pub(crate) unsafe fn store_justified_native_glyphs(node: &mut NativeWord) {
                 node.set_width(savedWidth);
             };
         }
+        _ => panic!("Not native font"),
     }
 }
 pub(crate) unsafe fn measure_native_node(node: &mut NativeWord, use_glyph_metrics: bool) {

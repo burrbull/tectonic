@@ -9228,7 +9228,10 @@ pub(crate) unsafe fn new_native_word_node(f: usize, n: i32) -> NativeWord {
 }
 pub(crate) unsafe fn new_native_character(f: internal_font_number, c: char) -> NativeWord {
     let mut p;
-    let nf = FONT_LAYOUT_ENGINE[f].as_native();
+    let nf = match &FONT_LAYOUT_ENGINE[f] {
+        Font::Native(nf) => nf,
+        _ => panic!("Not native font"),
+    };
     if !(FONT_MAPPING[f]).is_null() {
         let mut buf = [0; 2];
         let b = c.encode_utf16(&mut buf);
