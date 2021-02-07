@@ -8035,11 +8035,8 @@ pub(crate) unsafe fn conv_toks(input: &mut input_state_t, chr: i32, cs: i32) {
         }
         ConvertCode::XetexGlyphName => match &FONT_LAYOUT_ENGINE[fnt as usize] {
             #[cfg(target_os = "macos")]
-            Font::Native(Aat(engine)) => aat::GetGlyphNameFromCTFont(
-                aat::font_from_attributes(engine.attributes),
-                arg1 as u16,
-            ),
-            Font::Native(Otgr(engine)) => engine.get_font().get_glyph_name(arg1 as u16),
+            Font::Native(Aat(engine)) => engine.glyph_name(arg1 as u16),
+            Font::Native(Otgr(engine)) => engine.glyph_name(arg1 as u16),
             _ => panic!("bad native font flag in `print_glyph_name`"),
         },
         ConvertCode::LeftMarginKern => {

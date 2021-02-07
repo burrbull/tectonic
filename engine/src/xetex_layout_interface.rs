@@ -387,7 +387,7 @@ impl TextLayoutEngine for XeTeXLayoutEngine {
     }
 
     unsafe fn get_glyph_width_from_engine(&self, glyphID: u32) -> f64 {
-        (self.extend * self.font.get_glyph_width(glyphID as GlyphID)) as f64
+        self.extend as f64 * self.glyph_width(glyphID)
     }
 
     /// getGlyphHeightDepth (had out params height, depth)
