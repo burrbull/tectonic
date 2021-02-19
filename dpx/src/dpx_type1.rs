@@ -773,7 +773,10 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
                         .glyphs
                         .offset((*charset).num_entries as isize) =
                         cff_get_seac_sid(&cffont, achar_name) as s_SID;
-                    (*charset).num_entries = ((*charset).num_entries as i32 + 1) as u16
+                    (*charset).num_entries = ((*charset).num_entries as i32 + 1) as u16;
+                    /* CharSet is actually string object. */
+                    pdfcharset.add_str("/");
+                    pdfcharset.add_slice(achar_name.as_bytes());
                 }
                 let mut i = 0;
                 while i < num_glyphs as i32 {
@@ -793,7 +796,10 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
                         .glyphs
                         .offset((*charset).num_entries as isize) =
                         cff_get_seac_sid(&cffont, bchar_name) as s_SID;
-                    (*charset).num_entries = ((*charset).num_entries as i32 + 1) as u16
+                    (*charset).num_entries = ((*charset).num_entries as i32 + 1) as u16;
+                    /* CharSet is actually string object. */
+                    pdfcharset.add_str("/");
+                    pdfcharset.add_slice(achar_name.as_bytes());
                 }
             }
         }
@@ -822,6 +828,5 @@ pub(crate) unsafe fn pdf_font_load_type1(font: &mut pdf_font) -> i32 {
     }
     free(widths as *mut libc::c_void);
     free(GIDMap as *mut libc::c_void);
-    /* Maybe writing Charset is recommended for subsetted font. */
     0
 }
