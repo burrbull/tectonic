@@ -109,7 +109,7 @@ unsafe fn Type0Font_clean(font: &mut Type0Font) {
     font.used_chars = ptr::null_mut();
     font.fontname.clear();
 }
-/* PLEASE FIX THIS */
+/*/* PLEASE FIX THIS */
 unsafe fn Type0Font_create_ToUnicode_stream(font: &Type0Font) -> *mut pdf_obj {
     let cidfont: *mut CIDFont = font.descendant;
     let used_chars = std::slice::from_raw_parts(Type0Font_get_usedchars(font) as *const u8, 8192);
@@ -119,9 +119,11 @@ unsafe fn Type0Font_create_ToUnicode_stream(font: &Type0Font) -> *mut pdf_obj {
         used_chars,
         font.cmap_id,
     )
-}
+}*/
 /* Try to load ToUnicode CMap from file system first, if not found fallback to
- * font CMap reverse lookup. */
+ * font CMap reverse lookup. 
+ * CHANGED: CMap here is not always Unicode to CID mapping. Don't use reverse lookup.
+ */
 unsafe fn Type0Font_try_load_ToUnicode_stream(
     font: *mut Type0Font,
     cmap_base: &str,
@@ -133,11 +135,12 @@ unsafe fn Type0Font_try_load_ToUnicode_stream(
         tounicode = pdf_read_ToUnicode_file(&cmap_name)
     }
     if tounicode.is_null() {
+        let cidfont = (*font).descendant;
         tounicode = Type0Font_create_ToUnicode_stream(&*font)
     }
     tounicode
 }
-unsafe fn add_ToUnicode(font: *mut Type0Font) {
+unsafe fn Type0Font_attach_ToUnicode_stream(font: *mut Type0Font) {
     /*
      * ToUnicode CMap:
      *
@@ -174,7 +177,7 @@ unsafe fn add_ToUnicode(font: *mut Type0Font) {
     let mut fontname = &*(&*cidfont).fontname;
     if CIDFont_get_embedding(&*cidfont) != 0 {
         fontname = &fontname[7..]
-        /* FIXME */
+        /* FIXME: Skip pseudo unique tag... */
     }
     if csi.registry == "Adobe" && csi.ordering == "Identity" {
         match CIDFont_get_subtype(&*cidfont) {
@@ -217,7 +220,7 @@ unsafe fn Type0Font_dofont(font: &mut Type0Font) {
     }
     if !(*font.fontdict).as_dict().has("ToUnicode") {
         /* FIXME */
-        add_ToUnicode(font);
+        Type0Font_attach_ToUnicode_stream(font);
     };
 }
 unsafe fn Type0Font_flush(font: &mut Type0Font) {
