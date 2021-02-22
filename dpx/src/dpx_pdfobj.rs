@@ -334,7 +334,7 @@ impl std::hash::Hash for pdf_name {
 #[repr(C)]
 pub struct pdf_indirect {
     pub(crate) pf: *mut pdf_file,
-    pub(crate) obj: *mut pdf_obj,
+    // pub(crate) obj: *mut pdf_obj,
     pub(crate) id: ObjectId,
 }
 
@@ -342,7 +342,7 @@ impl pdf_indirect {
     pub(crate) fn new(pf: *mut pdf_file, id: ObjectId) -> Self {
         Self {
             pf,
-            obj: ptr::null_mut(),
+            // obj: ptr::null_mut(),
             id,
         }
     }
@@ -2907,14 +2907,13 @@ pub(crate) unsafe fn pdf_new_ref(object: &mut pdf_obj) -> pdf_indirect {
     pdf_indirect {
         pf: ptr::null_mut(),
         id: object.id,
-        obj: object,
+        // obj: object,
     }
 }
 /* pdf_deref_obj always returns a link instead of the original   */
 /* It never return the null object, but the NULL pointer instead */
 
 pub(crate) unsafe fn pdf_deref_obj(obj: Option<&mut pdf_obj>) -> *mut pdf_obj {
-    let mut count = 30;
     let mut obj = match obj {
         None => ptr::null_mut(),
         Some(o) => o as *mut pdf_obj,
@@ -2922,21 +2921,24 @@ pub(crate) unsafe fn pdf_deref_obj(obj: Option<&mut pdf_obj>) -> *mut pdf_obj {
     if !obj.is_null() {
         obj = pdf_link_obj(obj)
     }
-    while !obj.is_null() && (*obj).is_indirect() && {
+    let mut count = 30;
+    while !obj.is_null() && (*obj).is_indirect() {
         count -= 1;
-        count != 0
-    } {
+        if count == 0 {
+            break;
+        }
         if let Some(pf) = (*obj).as_indirect().pf.as_mut() {
             let obj_id = (*obj).as_indirect().id;
             pdf_release_obj(obj);
             obj = pdf_get_object(pf, obj_id)
         } else {
-            let next_obj: *mut pdf_obj = (*obj).as_indirect().obj;
+            /* let next_obj: *mut pdf_obj = (*obj).as_indirect().obj;
             if next_obj.is_null() {
                 panic!("Undefined object reference");
             }
             pdf_release_obj(obj);
-            obj = pdf_link_obj(next_obj)
+            obj = pdf_link_obj(next_obj)*/
+            unreachable!()
         }
     }
     if count == 0 {
@@ -3599,7 +3601,7 @@ unsafe fn pdf_import_indirect(object: *mut pdf_obj) -> *mut pdf_obj {
         }
         return pdf_link_obj(ref_0);
     } else {
-        let obj = pdf_get_object(&mut *pf, (obj_num, obj_gen));
+        let obj = pdf_get_object(pf, (obj_num, obj_gen));
         if obj.is_null() {
             warn!("Could not read object: {} {}", obj_num, obj_gen as i32);
             return ptr::null_mut();
