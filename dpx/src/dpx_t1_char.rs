@@ -33,7 +33,7 @@ use libc::{free, memcpy, memset};
 use std::cmp::Ordering;
 use std::ptr;
 
-use super::dpx_cff::cff_index;
+use super::dpx_cff::CffIndex;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub(crate) struct t1_ginfo {
@@ -292,7 +292,7 @@ unsafe fn release_charpath(mut cd: *mut t1_chardesc) {
 /*
  * Single byte operators:
  */
-unsafe fn do_operator1(mut cd: *mut t1_chardesc, data: &mut *mut u8) {
+unsafe fn do_operator1(mut cd: *mut t1_chardesc, data: &mut *const u8) {
     let mut op: u8 = **data;
     *data = (*data).offset(1);
     match op as i32 {
@@ -744,7 +744,7 @@ unsafe fn do_callothersubr(cd: *mut t1_chardesc) {
 /*
  * Double byte operators:
  */
-unsafe fn do_operator2(mut cd: *mut t1_chardesc, data: &mut *mut u8, endptr: *mut u8) {
+unsafe fn do_operator2(mut cd: *mut t1_chardesc, data: &mut *const u8, endptr: *const u8) {
     *data = (*data).offset(1);
     if endptr < (*data).offset(1) {
         status = -1;
@@ -958,7 +958,7 @@ unsafe fn put_numbers(argv: *mut f64, argn: i32, dest: &mut *mut u8, limit: *mut
         }
     }
 }
-unsafe fn get_integer(data: &mut *mut u8, endptr: *mut u8) {
+unsafe fn get_integer(data: &mut *const u8, endptr: *const u8) {
     let mut result;
     let b0: u8 = **data;
     let b1;
@@ -1008,7 +1008,7 @@ unsafe fn get_integer(data: &mut *mut u8, endptr: *mut u8) {
     cs_stack_top += 1;
 }
 /* Type 1 */
-unsafe fn get_longint(data: &mut *mut u8, endptr: *mut u8) {
+unsafe fn get_longint(data: &mut *const u8, endptr: *const u8) {
     *data = (*data).offset(1);
     if endptr < (*data).offset(4) {
         status = -1;
@@ -1038,9 +1038,9 @@ unsafe fn get_longint(data: &mut *mut u8, endptr: *mut u8) {
 /* Parse charstring and build charpath. */
 unsafe fn t1char_build_charpath(
     cd: *mut t1_chardesc,
-    data: &mut *mut u8,
-    endptr: *mut u8,
-    subrs: *mut cff_index,
+    data: &mut *const u8,
+    endptr: *const u8,
+    subrs: &Option<Box<CffIndex>>,
 ) {
     if nest > 10 {
         panic!("Subroutine nested too deeply.");
@@ -1059,19 +1059,18 @@ unsafe fn t1char_build_charpath(
             } else {
                 cs_stack_top -= 1;
                 let idx = cs_arg_stack[cs_stack_top as usize] as i32;
-                if subrs.is_null() || idx >= (*subrs).count as i32 {
-                    panic!("Invalid Subr#.");
+                match subrs.as_ref() {
+                    Some(subrs0) if idx < subrs0.count as i32 => {
+                        let mut subr =
+                            subrs0.data[subrs0.offset[idx as usize] as usize - 1..].as_ptr();
+                        let len = (subrs0.offset[(idx + 1) as usize] - subrs0.offset[idx as usize])
+                            as i32;
+                        let endptr = subr.offset(len as isize);
+                        t1char_build_charpath(cd, &mut subr, endptr, subrs);
+                        *data = (*data).offset(1);
+                    }
+                    _ => panic!("Invalid Subr#."),
                 }
-                let mut subr = (*subrs)
-                    .data
-                    .offset(*(*subrs).offset.offset(idx as isize) as isize)
-                    .offset(-1);
-                let len = (*(*subrs).offset.offset((idx + 1) as isize))
-                    .wrapping_sub(*(*subrs).offset.offset(idx as isize))
-                    as i32;
-                let endptr = subr.offset(len as isize);
-                t1char_build_charpath(cd, &mut subr, endptr, subrs);
-                *data = (*data).offset(1)
             }
         } else if b0 as i32 == 12 {
             do_operator2(cd, data, endptr);
@@ -1495,9 +1494,9 @@ unsafe fn do_postproc(mut cd: *mut t1_chardesc) {
 }
 
 pub(crate) unsafe fn t1char_get_metrics(
-    mut src: *mut u8,
+    mut src: *const u8,
     srclen: i32,
-    subrs: *mut cff_index,
+    subrs: &Option<Box<CffIndex>>,
     mut ginfo: *mut t1_ginfo,
 ) -> i32 {
     let mut t1char: t1_chardesc = t1_chardesc {
@@ -1806,9 +1805,9 @@ unsafe fn t1char_encode_charpath(
 pub(crate) unsafe fn t1char_convert_charstring(
     dst: *mut u8,
     dstlen: i32,
-    mut src: *mut u8,
+    mut src: *const u8,
     srclen: i32,
-    subrs: *mut cff_index,
+    subrs: &Option<Box<CffIndex>>,
     default_width: f64,
     nominal_width: f64,
     mut ginfo: *mut t1_ginfo,

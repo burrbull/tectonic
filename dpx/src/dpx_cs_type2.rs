@@ -31,7 +31,7 @@ use libc::memmove;
 
 use std::ptr;
 
-use super::dpx_cff::cff_index;
+use crate::dpx_cff::CffIndex;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub(crate) struct cs_ginfo {
@@ -188,7 +188,12 @@ unsafe fn clear_stack(dest: &mut *mut u8, limit: *mut u8) {
  *  1: hint declaration, first stack-clearing operator appeared
  *  2: in path construction
  */
-unsafe fn do_operator1(dest: &mut *mut u8, limit: *mut u8, data: &mut *mut u8, endptr: *mut u8) {
+unsafe fn do_operator1(
+    dest: &mut *mut u8,
+    limit: *mut u8,
+    data: &mut *const u8,
+    endptr: *const u8,
+) {
     let op: u8 = **data;
     *data = (*data).offset(1);
     match op as i32 {
@@ -333,7 +338,12 @@ unsafe fn do_operator1(dest: &mut *mut u8, limit: *mut u8, data: &mut *mut u8, e
  * Following operators are not supported:
  *  random: How random ?
  */
-unsafe fn do_operator2(dest: &mut *mut u8, limit: *mut u8, data: &mut *mut u8, endptr: *mut u8) {
+unsafe fn do_operator2(
+    dest: &mut *mut u8,
+    limit: *mut u8,
+    data: &mut *const u8,
+    endptr: *const u8,
+) {
     *data = (*data).offset(1);
     if endptr < (*data).offset(1) {
         status = -1;
@@ -610,7 +620,7 @@ unsafe fn do_operator2(dest: &mut *mut u8, limit: *mut u8, data: &mut *mut u8, e
  * integer:
  *  exactly the same as the DICT encoding (except 29)
  */
-unsafe fn get_integer(data: &mut *mut u8, endptr: *mut u8) {
+unsafe fn get_integer(data: &mut *const u8, endptr: *const u8) {
     let mut result;
     let b0: u8 = **data;
     *data = (*data).offset(1);
@@ -661,7 +671,7 @@ unsafe fn get_integer(data: &mut *mut u8, endptr: *mut u8) {
 /*
  * Signed 16.16-bits fixed number for Type 2 charstring encoding
  */
-unsafe fn get_fixed(data: &mut *mut u8, endptr: *mut u8) {
+unsafe fn get_fixed(data: &mut *const u8, endptr: *const u8) {
     *data = (*data).offset(1);
     if endptr < (*data).offset(4) {
         status = -1;
@@ -692,14 +702,19 @@ unsafe fn get_fixed(data: &mut *mut u8, endptr: *mut u8) {
  * subr_idx: CFF INDEX data that contains subroutines.
  * id:       biased subroutine number.
  */
-unsafe fn get_subr(subr: &mut *mut u8, len: *mut i32, subr_idx: *mut cff_index, mut id: i32) {
-    if subr_idx.is_null() {
+unsafe fn get_subr(
+    subr: &mut *const u8,
+    len: *mut i32,
+    subr_idx: &Option<Box<CffIndex>>,
+    mut id: i32,
+) {
+    let subr_idx = subr_idx.as_ref().unwrap_or_else(|| {
         panic!(
             "{}: Subroutine called but no subroutine found.",
             "Type2 Charstring Parser",
-        );
-    }
-    let count = (*subr_idx).count;
+        )
+    });
+    let count = subr_idx.count;
     /* Adding bias number */
     if (count as i32) < 1240 {
         id += 107
@@ -714,12 +729,8 @@ unsafe fn get_subr(subr: &mut *mut u8, len: *mut i32, subr_idx: *mut cff_index, 
             "Type2 Charstring Parser", id, count,
         );
     }
-    *len = (*(*subr_idx).offset.offset((id + 1) as isize))
-        .wrapping_sub(*(*subr_idx).offset.offset(id as isize)) as i32;
-    *subr = (*subr_idx)
-        .data
-        .offset(*(*subr_idx).offset.offset(id as isize) as isize)
-        .offset(-1);
+    *len = (subr_idx.offset[(id + 1) as usize] - subr_idx.offset[id as usize]) as i32;
+    *subr = subr_idx.data[subr_idx.offset[id as usize] as usize - 1..].as_ptr();
 }
 /*
  * NOTE:
@@ -730,12 +741,11 @@ unsafe fn get_subr(subr: &mut *mut u8, len: *mut i32, subr_idx: *mut cff_index, 
 unsafe fn do_charstring(
     dest: &mut *mut u8,
     limit: *mut u8,
-    data: &mut *mut u8,
-    endptr: *mut u8,
-    gsubr_idx: *mut cff_index,
-    subr_idx: *mut cff_index,
+    data: &mut *const u8,
+    endptr: *const u8,
+    gsubr_idx: &Option<Box<CffIndex>>,
+    subr_idx: &Option<Box<CffIndex>>,
 ) {
-    let mut subr: *mut u8 = ptr::null_mut();
     let mut len: i32 = 0;
     if nest > 10 {
         panic!(
@@ -756,6 +766,7 @@ unsafe fn do_charstring(
                 status = -2
             } else {
                 stack_top -= 1;
+                let mut subr: *const u8 = ptr::null();
                 get_subr(
                     &mut subr,
                     &mut len,
@@ -774,6 +785,7 @@ unsafe fn do_charstring(
                 status = -2
             } else {
                 stack_top -= 1;
+                let mut subr: *const u8 = ptr::null();
                 get_subr(
                     &mut subr,
                     &mut len,
@@ -829,10 +841,10 @@ unsafe fn cs_parse_init() {
 pub(crate) unsafe fn cs_copy_charstring(
     mut dst: *mut u8,
     dstlen: i32,
-    mut src: *mut u8,
+    mut src: *const u8,
     srclen: i32,
-    gsubr: *mut cff_index,
-    subr: *mut cff_index,
+    gsubr: &Option<Box<CffIndex>>,
+    subr: &Option<Box<CffIndex>>,
     default_width: f64,
     nominal_width: f64,
     mut ginfo: *mut cs_ginfo,
